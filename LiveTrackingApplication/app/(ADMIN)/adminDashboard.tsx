@@ -13,7 +13,6 @@ import {
     KeyboardAvoidingView,
     Modal,
     Platform,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Text,
@@ -22,6 +21,7 @@ import {
     TouchableWithoutFeedback,
     View
 } from 'react-native';
+
 
 const { width } = Dimensions.get('window');
 
@@ -219,7 +219,7 @@ const AdminDashboard = () => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* HEADER */}
       <View style={styles.header}>
         <View style={styles.brandContainer}>
@@ -264,6 +264,7 @@ const AdminDashboard = () => {
             {filteredProducts.map((item, index) => (
               <View key={item.pid || item.id || index} style={styles.productCard}>
                 <Image 
+                key={`${item.pid || item.id}-${refreshKey}`}
                   source={{ uri: `${item.photo}${item.photo?.includes('?') ? '&' : '?'}t=${refreshKey}` }} 
                   style={styles.productImage} 
                 />
@@ -390,19 +391,20 @@ const AdminDashboard = () => {
           </KeyboardAvoidingView>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
   header: {
-    height: 70, backgroundColor: '#2E8B57', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, zIndex: 10,
-    ...Platform.select({ android: { elevation: 6 }, ios: { shadowOpacity: 0.2 }, web: { boxShadow: '0px 2px 4px rgba(0,0,0,0.1)' } }),
+   height: 140, // Increased from 70 to accommodate new space
+  paddingTop: 25, backgroundColor: '#2E8B57', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, zIndex: 10,
+    ...Platform.select({ android: { elevation: 6  }, ios: { shadowOpacity: 0.2 }, web: { boxShadow: '0px 2px 4px rgba(0,0,0,0.1)' } }),
   },
   brandContainer: { flexDirection: 'row', alignItems: 'center' },
-  brandName: { fontSize: 18, fontWeight: 'bold', color: 'white', marginLeft: 6 },
-  headerSearchContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255, 255, 255, 0.2)', borderRadius: 8, paddingHorizontal: 10, height: 40, marginHorizontal: 10 },
+  brandName: { fontSize: 20, fontWeight: 'bold', color: 'white', marginLeft: 6 },
+  headerSearchContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255, 255, 255, 0.2)', borderRadius: 8, paddingHorizontal: 10, height: 50, marginHorizontal: 10 },
   headerSearchInput: { flex: 1, color: 'white', marginLeft: 8 },
   welcomeCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', marginVertical: 15, marginHorizontal: Platform.OS === 'web' ? '2%' : 15, padding: 20, borderRadius: 15, elevation: 4 },
   welcomeTextContainer: { marginLeft: 15, flex: 1 },

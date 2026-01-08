@@ -1,12 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios'; // Import Axios
+import axios from 'axios';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store'; // Ensure this is imported
+import * as SecureStore from 'expo-secure-store';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -20,9 +22,9 @@ import {
 
 const ManagementPage = () => {
   const router = useRouter();
+  
+  // --- RIDER FORM STATE ---
   const [loadingRider, setLoadingRider] = useState(false);
-
-  // --- RIDER FORM STATE (Matching API Payload) ---
   const [riderForm, setRiderForm] = useState({
     name: '',
     phone: '',
@@ -30,84 +32,141 @@ const ManagementPage = () => {
     password: '',
     confirmPassword: '',
     vehicleNumber: '',
-    vehicleType: '', // Default value
+    vehicleType: '', 
   });
 
-  // --- PRODUCT FORM STATE ---
-  const [productName, setProductName] = useState('');
-  const [productPrice, setProductPrice] = useState('');
+  // --- PRODUCT FORM STATE (Removed pid) ---
+  const [loadingProduct, setLoadingProduct] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [productForm, setProductForm] = useState({
+    pname: '',
+    description: '',
+    price: '',
+    stock: '',
+  });
 
-  // --- HANDLE ADD RIDER API ---
-const handleAddRider = async () => {
-  // 1. Frontend Validation
-  if (!riderForm.name || !riderForm.phone || !riderForm.gmail || !riderForm.password || !riderForm.confirmPassword) {
-    Alert.alert("Error", "Please fill in all required fields");
-    return;
-  }
+  // --- IMAGE PICKER HANDLER ---
+  const pickImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
 
-  if (riderForm.password !== riderForm.confirmPassword) {
-    Alert.alert("Error", "Passwords do not match");
-    return;
-  }
+    if (!result.canceled) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  };
 
-  setLoadingRider(true);
-
-  try {
-    // 2. Retrieve the Token from storage
-    // Matches the keys used during your login process
-    const token = Platform.OS === 'web' 
-      ? await AsyncStorage.getItem('userToken') 
-      : await SecureStore.getItemAsync('userToken');
-
-    // --- NEW: Token Check ---
-    if (!token) {
-      Alert.alert("Session Expired", "Please log in again to continue.");
-      router.replace('/'); // Redirect to login
+  // --- HANDLE ADD RIDER ---
+  const handleAddRider = async () => {
+    if (!riderForm.name || !riderForm.phone || !riderForm.gmail || !riderForm.password || !riderForm.confirmPassword) {
+      Alert.alert("Error", "Please fill in all required fields");
+      return;
+    }
+    if (riderForm.password !== riderForm.confirmPassword) {
+      Alert.alert("Error", "Passwords do not match");
       return;
     }
 
-    // 3. API Call with full payload and Authorization Header
-    const response = await axios.post(
-      'http://192.168.0.201:8082/api/admin/create-rider', // Ensure port 8081 is correct for this service
-      riderForm, 
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`, // Adding the JWT token
-          'Content-Type': 'application/json'
+    setLoadingRider(true);
+    try {
+      const token = Platform.OS === 'web' 
+        ? await AsyncStorage.getItem('userToken') 
+        : await SecureStore.getItemAsync('userToken');
+
+      const response = await axios.post(
+        'http://192.168.0.189:8082/api/admin/create-rider',
+        riderForm, 
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
         }
+      );
+      
+      if (response.status === 200 || response.status === 201) {
+        Alert.alert("Success", "Rider registered successfully!");
+        setRiderForm({
+          name: '', phone: '', gmail: '', password: '', 
+          confirmPassword: '', vehicleNumber: '', vehicleType: 'MOTOR BIKE',
+        });
       }
-    );
-    
-    if (response.status === 200 || response.status === 201) {
-      Alert.alert("Success", "Rider registered successfully!");
-      // Reset form on success
-      setRiderForm({
-        name: '', phone: '', gmail: '', password: '', 
-        confirmPassword: '', vehicleNumber: '', vehicleType: 'MOTOR BIKE',
-      });
+    } catch (error: any) {
+      Alert.alert("Registration Failed", error.response?.data?.message || "Error creating rider.");
+    } finally {
+      setLoadingRider(false);
     }
-  } catch (error: any) {
-    console.log("Backend Error Details:", error.response?.data);
-    
-    // Improved error messaging
-    const errorDetail = error.response?.data?.message || 
-                        (error.response?.data?.errors ? JSON.stringify(error.response.data.errors) : null) ||
-                        "Validation Error (400). Please check if the email/phone is already in use.";
+  };
 
-    Alert.alert("Registration Failed", errorDetail);
-  } finally {
-    setLoadingRider(false);
-  }
-};
-
-  const handleAddProduct = () => {
-    if (!productName || !productPrice) {
-      Alert.alert("Error", "Please fill in all product details");
+  // --- HANDLE ADD PRODUCT (Removed pid requirement) ---
+  const handleAddProduct = async () => {
+    if (!productForm.pname || !productForm.price || !selectedImage) {
+      Alert.alert("Error", "Please fill in all fields (Name, Price) and select an image.");
       return;
     }
-    Alert.alert("Success", "Product added successfully!");
-    setProductName('');
-    setProductPrice('');
+
+    setLoadingProduct(true);
+    try {
+      const token = Platform.OS === 'web' 
+        ? await AsyncStorage.getItem('userToken') 
+        : await SecureStore.getItemAsync('userToken');
+
+      const formData = new FormData();
+
+      // Removed pid from productData
+      const productData = {
+        pname: productForm.pname,
+        description: productForm.description,
+        price: parseFloat(productForm.price),
+        stock: parseInt(productForm.stock) || 0,
+      };
+
+      if (Platform.OS === 'web') {
+        const jsonBlob = new Blob([JSON.stringify(productData)], { type: 'application/json' });
+        formData.append('product', jsonBlob);
+      } else {
+        formData.append('product', JSON.stringify(productData));
+      }
+
+      const uri = selectedImage;
+      const name = uri.split('/').pop() || 'product.jpg';
+      const match = /\.(\w+)$/.exec(name);
+      const type = match ? `image/${match[1]}` : `image/jpeg`;
+
+      if (Platform.OS === 'web') {
+        const res = await fetch(uri);
+        const blob = await res.blob();
+        formData.append('image', blob, name); 
+      } else {
+        formData.append('image', { uri, name, type } as any);
+      }
+
+      const response = await axios.post(
+        'http://192.168.0.201:8080/api/admin/products/addimage',
+        formData,
+        {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data',
+          }
+        }
+      );
+
+      if (response.status === 200 || response.status === 201) {
+        Alert.alert("Success", "Product added successfully!");
+        router.replace('/adminDashboard');
+        setProductForm({ pname: '', description: '', price: '', stock: '' });
+        setSelectedImage(null);
+      }
+    } catch (error: any) {
+      console.error("Add Product Error:", error.response?.data);
+      Alert.alert("Error", "Failed to add product.");
+    } finally {
+      setLoadingProduct(false);
+    }
   };
 
   return (
@@ -116,7 +175,12 @@ const handleAddRider = async () => {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="white" />
         </TouchableOpacity>
+        <View style={styles.headerTitleContainer}>
         <Text style={styles.headerTitle}>Management Center</Text>
+        <Text style={styles.headerSubtitle}>Add Rider or Add Product</Text>
+      </View>
+       
+        
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
@@ -226,29 +290,68 @@ const handleAddRider = async () => {
               <Text style={styles.sectionTitle}>Add Product</Text>
             </View>
 
+            <TouchableOpacity onPress={pickImage} style={styles.imagePicker}>
+              {selectedImage ? (
+                <Image source={{ uri: selectedImage }} style={styles.previewImage} />
+              ) : (
+                <View style={styles.imagePlaceholder}>
+                  <Ionicons name="camera-outline" size={30} color="#666" />
+                  <Text style={{ color: '#666', marginTop: 5 }}>Select Product Image</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {/* Removed Product ID Input Group */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Product Name</Text>
               <TextInput 
                 style={styles.input} 
                 placeholder="e.g., Fresh Salmon" 
-                value={productName}
-                onChangeText={setProductName}
+                value={productForm.pname}
+                onChangeText={(val) => setProductForm({...productForm, pname: val})}
               />
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Price ($)</Text>
+              <Text style={styles.label}>Description</Text>
               <TextInput 
-                style={styles.input} 
-                placeholder="0.00" 
-                keyboardType="numeric"
-                value={productPrice}
-                onChangeText={setProductPrice}
+                style={[styles.input, { height: 60 }]} 
+                placeholder="Product description..." 
+                multiline
+                value={productForm.description}
+                onChangeText={(val) => setProductForm({...productForm, description: val})}
               />
             </View>
 
-            <TouchableOpacity style={styles.submitButton} onPress={handleAddProduct}>
-              <Text style={styles.submitButtonText}>Add Product</Text>
+            <View style={styles.inputRow}>
+              <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
+                <Text style={styles.label}>Price ($)</Text>
+                <TextInput 
+                  style={styles.input} 
+                  placeholder="0.00" 
+                  keyboardType="numeric"
+                  value={productForm.price}
+                  onChangeText={(val) => setProductForm({...productForm, price: val})}
+                />
+              </View>
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <Text style={styles.label}>Stock</Text>
+                <TextInput 
+                  style={styles.input} 
+                  placeholder="0" 
+                  keyboardType="numeric"
+                  value={productForm.stock}
+                  onChangeText={(val) => setProductForm({...productForm, stock: val})}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.submitButton, loadingProduct && { opacity: 0.7 }]} 
+              onPress={handleAddProduct}
+              disabled={loadingProduct}
+            >
+              {loadingProduct ? <ActivityIndicator color="white" /> : <Text style={styles.submitButtonText}>Add Product</Text>}
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -260,55 +363,57 @@ const handleAddRider = async () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F7F6' },
   header: {
-    height: 70,
-    backgroundColor: '#2E8B57',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
+    height: 140, backgroundColor: '#2E8B57', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20,
     ...Platform.select({ android: { elevation: 4 }, ios: { shadowOpacity: 0.1 } })
   },
+
+  headerTitle: { 
+    fontSize: 24, 
+    fontWeight: 'bold', 
+    color: 'white',
+
+  },
+  headerTitleContainer: {
+    flexDirection: 'column', // Stacks text vertically
+    justifyContent: 'center',
+  },
+  headerSubtitle: {
+    fontSize: 15,
+    color: 'rgba(255, 255, 255, 0.8)', // Slightly transparent white
+    marginTop: 4,
+  },
   backButton: { marginRight: 15 },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: 'white' },
+  
   scrollContent: { padding: 20, paddingBottom: 40 },
   sectionCard: {
-    backgroundColor: 'white',
-    borderRadius: 15,
-    padding: 18,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
+    backgroundColor: 'white', borderRadius: 15, padding: 18, elevation: 3,
+    shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-    paddingBottom: 8,
+    flexDirection: 'row', alignItems: 'center', marginBottom: 15, 
+    borderBottomWidth: 1, borderBottomColor: '#F0F0F0', paddingBottom: 8,
   },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginLeft: 10 },
   inputRow: { flexDirection: 'row', justifyContent: 'space-between' },
   inputGroup: { marginBottom: 12 },
   label: { fontSize: 13, color: '#666', marginBottom: 4, fontWeight: '600' },
   input: {
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 15,
-    backgroundColor: '#FAFAFA',
-    color: '#333',
+    borderWidth: 1, borderColor: '#E0E0E0', borderRadius: 8, padding: 10, 
+    fontSize: 15, backgroundColor: '#FAFAFA', color: '#333',
   },
   submitButton: {
-    backgroundColor: '#2E8B57',
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 8,
+    backgroundColor: '#2E8B57', borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginTop: 8,
   },
   submitButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
   dividerLarge: { height: 25 },
+  // Image Picker specific styles
+  imagePicker: {
+    width: '100%', height: 150, backgroundColor: '#FAFAFA', borderRadius: 10,
+    borderWidth: 1, borderColor: '#E0E0E0', borderStyle: 'dashed',
+    justifyContent: 'center', alignItems: 'center', marginBottom: 15, overflow: 'hidden'
+  },
+  previewImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  imagePlaceholder: { alignItems: 'center' },
 });
 
 export default ManagementPage;
