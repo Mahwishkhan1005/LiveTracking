@@ -1,12 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
+// Import your local asset
 import { FlatList, Image, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useCart } from '../../context/CartContext'; // Import the hook we made
+import seafoodLogo from '../../assets/seafood.png';
+import { useCart } from '../../context/CartContext'; //
 
 const CartPage = () => {
-  const { cartItems, removeFromCart, updateQuantity, cartTotal } = useCart();
-  const router = useRouter();
+  const { cartItems, removeFromCart, updateQuantity, cartTotal } = useCart(); //
+  const router = useRouter(); //
 
   const renderItem = ({ item }: { item: any }) => (
     <View style={styles.cartCard}>
@@ -29,16 +31,22 @@ const CartPage = () => {
         <Ionicons name="trash-outline" size={24} color="red" />
       </TouchableOpacity>
     </View>
-  );
+  ); //
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* HEADER SECTION */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={28} color="white" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Your Cart</Text>
         <View style={{ width: 28 }} /> 
+      </View>
+
+      {/* ENLARGED BANNER SECTION */}
+      <View style={styles.bannerContainer}>
+        <Image source={seafoodLogo} style={styles.bannerImage} />
       </View>
 
       {cartItems.length === 0 ? (
@@ -63,10 +71,7 @@ const CartPage = () => {
               <Text style={styles.totalLabel}>Total Amount:</Text>
               <Text style={styles.totalPrice}>₹{cartTotal}</Text>
             </View>
-            <TouchableOpacity 
-              style={styles.checkoutBtn}
-            //   onPress={() => router.push('/payment')}
-            >
+            <TouchableOpacity style={styles.checkoutBtn}>
               <Text style={styles.checkoutText}>Proceed to Checkout</Text>
             </TouchableOpacity>
           </View>
@@ -83,6 +88,22 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, paddingTop: 20 
   },
   headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold' },
+  
+  // UPDATED STYLES FOR LARGER IMAGE
+  bannerContainer: {
+    width: '100%',
+    height: 200, // Increased height from 120 to 200
+    backgroundColor: 'white',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  bannerImage: {
+    width: '100%', // Increased width from 90% to 100%
+    height: '100%', // Increased height from 90% to 100%
+    resizeMode: 'contain', // Keeps the image aspect ratio correct
+  },
+
   listContent: { padding: 15 },
   cartCard: { 
     flexDirection: 'row', backgroundColor: 'white', borderRadius: 12, 
