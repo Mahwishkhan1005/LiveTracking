@@ -6,20 +6,20 @@ import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    Image,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View
 } from 'react-native';
 
 
@@ -66,7 +66,7 @@ const AdminDashboard = () => {
         ? await AsyncStorage.getItem('userToken') 
         : await SecureStore.getItemAsync('userToken');
 
-      const response = await axios.get('http://192.168.0.201:8080/api/admin/products/all', {
+      const response = await axios.get('http://192.168.0.216:8080/api/admin/products/all', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       setProducts(response.data);
@@ -149,7 +149,7 @@ const AdminDashboard = () => {
       }
 
       const response = await axios.put(
-        `http://192.168.0.201:8080/api/admin/products/update/${editForm.pid}`,
+        `http://192.168.0.216:8080/api/admin/products/update/${editForm.pid}`,
         formData,
         {
           headers: { 
@@ -177,7 +177,7 @@ const AdminDashboard = () => {
           ? await AsyncStorage.getItem('userToken') 
           : await SecureStore.getItemAsync('userToken');
 
-        await axios.delete(`http://192.168.0.201:8080/api/admin/products/delete/${editForm.pid}`, {
+        await axios.delete(`http://192.168.0.216:8080/api/admin/products/delete/${editForm.pid}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
 

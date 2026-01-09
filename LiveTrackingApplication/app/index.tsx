@@ -6,16 +6,16 @@ import * as SecureStore from 'expo-secure-store';
 import { jwtDecode } from 'jwt-decode';
 import React, { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    Platform, // 1. Import Platform
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Platform, // 1. Import Platform
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -36,7 +36,7 @@ const handleLogin = async () => {
   setLoading(true);
 
   try {
-    const response = await axios.post('http://192.168.0.189:8082/api/auth/login', {
+    const response = await axios.post('http://192.168.0.203:8082/api/auth/login', {
       gmail: email,
       password: password,
     });
