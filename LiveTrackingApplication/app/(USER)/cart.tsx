@@ -1,13 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
-// Import your local asset
-import { FlatList, Image, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  FlatList,
+  Image,
+  Platform,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
 import seafoodLogo from '../../assets/seafood.png';
-import { useCart } from '../../context/CartContext'; //
+import { useCart } from '../../context/CartContext';
 
 const CartPage = () => {
-  const { cartItems, removeFromCart, updateQuantity, cartTotal } = useCart(); //
+  const { cartItems, removeFromCart, updateQuantity, cartTotal } = useCart(); 
   const router = useRouter(); //
 
   const renderItem = ({ item }: { item: any }) => (
@@ -31,11 +39,24 @@ const CartPage = () => {
         <Ionicons name="trash-outline" size={24} color="red" />
       </TouchableOpacity>
     </View>
-  ); //
+  );
+
+  // NEW: Component for the "Missed something?" section
+  const ListFooter = () => (
+    <View style={styles.missedContainer}>
+      <Text style={styles.missedText}>Missed something?</Text>
+      <TouchableOpacity 
+        style={styles.addMoreButton} 
+        onPress={() => router.back()} // Navigates back to userDashboard
+      >
+        <Ionicons name="add" size={20} color="white" />
+        <Text style={styles.addMoreButtonText}>Add More Items</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* HEADER SECTION */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={28} color="white" />
@@ -44,7 +65,6 @@ const CartPage = () => {
         <View style={{ width: 28 }} /> 
       </View>
 
-      {/* ENLARGED BANNER SECTION */}
       <View style={styles.bannerContainer}>
         <Image source={seafoodLogo} style={styles.bannerImage} />
       </View>
@@ -63,6 +83,7 @@ const CartPage = () => {
             data={cartItems}
             keyExtractor={(item) => item.pid.toString()}
             renderItem={renderItem}
+            ListFooterComponent={ListFooter} // ADDS SECTION BELOW CARDS
             contentContainerStyle={styles.listContent}
           />
 
@@ -71,7 +92,10 @@ const CartPage = () => {
               <Text style={styles.totalLabel}>Total Amount:</Text>
               <Text style={styles.totalPrice}>₹{cartTotal}</Text>
             </View>
-            <TouchableOpacity style={styles.checkoutBtn}>
+            <TouchableOpacity 
+              style={styles.checkoutBtn}
+             // onPress={() => router.push('/payment')}
+            >
               <Text style={styles.checkoutText}>Proceed to Checkout</Text>
             </TouchableOpacity>
           </View>
@@ -84,26 +108,28 @@ const CartPage = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
   header: { 
-    height: 70, backgroundColor: '#2E8B57', flexDirection: 'row', 
-    alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, paddingTop: 20 
+    // Reduced height and removed paddingTop for web
+    height: Platform.OS === 'web' ? 60 : (Platform.OS === 'android' ? 100 : 90), 
+    paddingTop: Platform.OS === 'web' ? 0 : (Platform.OS === 'android' ? 40 : 20), 
+    backgroundColor: '#2E8B57', 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingHorizontal: 15,
+    zIndex: 10,
   },
   headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold' },
-  
-  // UPDATED STYLES FOR LARGER IMAGE
   bannerContainer: {
     width: '100%',
-    height: 200, // Increased height from 120 to 200
+    // Increased height for web to 350 for more prominence
+    height: Platform.OS === 'web' ? 200 : 250, 
     backgroundColor: 'white',
-    justifyContent: 'center',
-    alignItems: 'center',
     marginBottom: 10,
+    overflow: 'hidden',
   },
-  bannerImage: {
-    width: '100%', // Increased width from 90% to 100%
-    height: '100%', // Increased height from 90% to 100%
-    resizeMode: 'contain', // Keeps the image aspect ratio correct
-  },
-
+  // Ensure height is 100% to fill the new container height
+  bannerImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  
   listContent: { padding: 15 },
   cartCard: { 
     flexDirection: 'row', backgroundColor: 'white', borderRadius: 12, 
@@ -117,12 +143,36 @@ const styles = StyleSheet.create({
   qtyBtn: { backgroundColor: '#eee', padding: 5, borderRadius: 4 },
   qtyText: { marginHorizontal: 15, fontSize: 16, fontWeight: 'bold' },
   deleteBtn: { padding: 10 },
+
+  missedContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    padding: 15,
+    borderRadius: 12,
+    marginTop: 5,
+    marginBottom: 20,
+    elevation: 2,
+    shadowOpacity: 0.1,
+  },
+  missedText: { fontSize: 16, color: '#333', fontWeight: '500' },
+  addMoreButton: {
+    backgroundColor: 'black',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+  addMoreButtonText: { color: 'white', fontWeight: 'bold', marginLeft: 4, fontSize: 14 },
+
   footer: { 
     backgroundColor: 'white', padding: 20, borderTopLeftRadius: 20, 
     borderTopRightRadius: 20, elevation: 10 
   },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
-  totalLabel: { fontSize: 18, color: '#666' },
+  totalLabel: { fontSize: 18, color: '#666', fontWeight: '500' },
   totalPrice: { fontSize: 22, fontWeight: 'bold', color: '#333' },
   checkoutBtn: { 
     backgroundColor: '#2E8B57', padding: 18, borderRadius: 12, alignItems: 'center' 
