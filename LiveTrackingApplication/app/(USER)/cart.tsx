@@ -59,52 +59,56 @@ const CartPage = () => {
       // 3. Conditional Logic based on Payment Mode
      // 3. Conditional Logic based on Payment Mode
       if (paymentMethod === 'ONLINE') {
-        // --- PREPAID FLOW (Razorpay) ---
-        const paymentResponse = await axios.post(
-          `http://192.168.0.223:8082/api/payments/create/${backendOrderId}`,
-          { amount: cartTotal * 100 },
-          { headers: { 'Authorization': `Bearer ${token}` } }
-        );
+  // --- PREPAID FLOW (Razorpay) ---
+  const paymentResponse = await axios.post(
+    `http://192.168.0.223:8082/api/payments/create/${backendOrderId}`,
+    { amount: cartTotal * 100 },
+    { headers: { 'Authorization': `Bearer ${token}` } }
+  );
 
-        // 1. Destructure the keys exactly as they appear in your JSON
-        const { razorpayOrderId } = paymentResponse.data;
+  const { razorpayOrderId } = paymentResponse.data;
 
-        // 2. Validate that the Order ID exists before opening Razorpay
-        if (!razorpayOrderId) {
-          Alert.alert("Error", "Failed to retrieve Razorpay Order ID from backend.");
-          setLoading(false);
-          return;
-        }
+  const options = {
+    description: 'Seafood Purchase',
+    image: 'https://i.imgur.com/3g7nmJC.png',
+    key: RAZORPAY_KEY_ID, 
+    name: 'Seafood Store',
+    order_id: razorpayOrderId,
+    prefill: { 
+      email: 'user@example.com', 
+      contact: '919999999999', 
+      name: 'User' 
+    },
+    theme: { color: '#2E8B57' }
+  };
 
-        const options = {
-          description: 'Seafood Purchase',
-          image: 'https://i.imgur.com/3g7nmJC.png',
-          key: RAZORPAY_KEY_ID, 
-          name: 'Seafood Store',
-          order_id: razorpayOrderId, // Amount and Currency are fetched automatically from this ID
-          prefill: { 
-            email: 'user@example.com', 
-            contact: '919999999999', 
-            name: 'User' 
-          },
-          theme: { color: '#2E8B57' }
-        };
+  try {
+    // 1. Open Razorpay Checkout
+    const data = await RazorpayCheckout.open(options);
 
-        // Debug Log: Check this in your terminal/console to verify the data
-        console.log("Razorpay Options:", options);
+    // 2. Call Verification API with your required payload
+    // Mapping Razorpay's snake_case response to your backend's camelCase keys
+    await axios.post('http://192.168.0.223:8082/api/payments/verify', {
+      razorpayOrderId: data.razorpay_order_id,
+      razorpayPaymentId: data.razorpay_payment_id,
+      razorpaySignature: data.razorpay_signature
+    }, { 
+      headers: { 'Authorization': `Bearer ${token}` } 
+    });
 
-        try {
-          const data = await RazorpayCheckout.open(options);
-          Alert.alert("Success", `Payment Successful: ${data.razorpay_payment_id}`);
-        } catch (paymentError: any) {
-          console.error("Payment Error Details:", paymentError);
-          Alert.alert("Payment Failed", paymentError.description || "The payment process was interrupted.");
-          return; 
-        }
-      } else {
-        // --- COD FLOW ---
-        Alert.alert("Success", `Order #${backendOrderId} placed successfully!`);
-      }
+    Alert.alert("Success", "Payment verified and order placed successfully!");
+
+  } catch (paymentError: any) {
+    console.error("Payment/Verification Error:", paymentError);
+    // If the error comes from the Razorpay SDK (cancellation)
+    const errorMsg = paymentError.description || "Payment verification failed.";
+    Alert.alert("Error", errorMsg);
+    return; // Stop here so the cart is NOT cleared
+  }
+} else {
+  // --- COD FLOW ---
+  Alert.alert("Success", `Order #${backendOrderId} placed successfully!`);
+}
 
       // 4. Finalize
       if (clearCart) clearCart();
