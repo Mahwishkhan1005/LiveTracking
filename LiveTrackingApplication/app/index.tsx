@@ -105,7 +105,21 @@ const AuthScreen = () => {
         setIsLogin(true);
       }
     } catch (error: any) {
-      Alert.alert("Error", error.response?.data?.message || "Something went wrong");
+      // Check specifically for error status 400
+      if (error.response?.status === 400) {
+        const errorMsg = "Invalid credentials. Please check your email and password.";
+        
+        if (Platform.OS === 'web') {
+          // Standard browser alert for web
+          window.alert(errorMsg);
+        } else {
+          // React Native Alert for mobile
+          Alert.alert("Error", errorMsg);
+        }
+      } else {
+        // Fallback for other errors
+        Alert.alert("Error", error.response?.data?.message || "Something went wrong");
+      }
     } finally {
       setLoading(false);
     }

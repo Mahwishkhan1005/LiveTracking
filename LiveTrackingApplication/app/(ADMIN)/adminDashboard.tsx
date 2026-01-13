@@ -4,7 +4,7 @@ import axios from 'axios';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,8 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  RefreshControl // Required for pull-to-refresh
+  ,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,15 +24,16 @@ import {
   View
 } from 'react-native';
 
-
 const { width } = Dimensions.get('window');
 
 const AdminDashboard = () => {
+  // --- STATE MANAGEMENT ---
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshKey, setRefreshKey] = useState(Date.now()); // Forces image refresh in UI
+  const [refreshing, setRefreshing] = useState(false); // New state for pull-to-refresh
+  const [refreshKey, setRefreshKey] = useState(Date.now());
 
   const [updateModalVisible, setUpdateModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -46,6 +49,49 @@ const AdminDashboard = () => {
   const router = useRouter();
   const toggleDropdown = () => setDropdownVisible(!dropdownVisible);
 
+  // --- CROSS-PLATFORM ALERT HELPER ---
+  const showAlert = (title: string, message: string) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${title}: ${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
+  // --- FETCH PRODUCTS LOGIC ---
+  const fetchProducts = async (isRefreshing = false) => {
+    // Only show center spinner if not pull-refreshing
+    if (!isRefreshing) setLoading(true);
+    
+    try {
+      const token = Platform.OS === 'web' 
+        ? await AsyncStorage.getItem('userToken') 
+        : await SecureStore.getItemAsync('userToken');
+
+      const response = await axios.get('http://192.168.0.223:8082/api/admin/products/all', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setProducts(response.data);
+      setRefreshKey(Date.now());
+    } catch (error) {
+      console.error("Fetch Products Error:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false); // Stop pull-refresh spinner
+    }
+  };
+
+  // --- PULL-TO-REFRESH HANDLER ---
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchProducts(true);
+  }, []);
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  // --- IMAGE PICKER ---
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -59,47 +105,11 @@ const AdminDashboard = () => {
     }
   };
 
-  const fetchProducts = async () => {
-    setLoading(true);
-    try {
-      const token = Platform.OS === 'web' 
-        ? await AsyncStorage.getItem('userToken') 
-        : await SecureStore.getItemAsync('userToken');
-
-      const response = await axios.get('http://192.168.0.223:8082/api/admin/products/all', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      setProducts(response.data);
-      setRefreshKey(Date.now()); // Forces the UI to reload images from the server
-    } catch (error) {
-      console.error("Fetch Products Error:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  const openModal = (item: any) => {
-    const productId = item.pid || item.id; 
-    setSelectedImage(null); 
-    setEditForm({
-      pid: productId, 
-      pname: item.pname,
-      description: item.description || '',
-      price: item.price,
-      stock: item.stock,
-      photo: item.photo || ''
-    });
-    setUpdateModalVisible(true);
-  };
-
+  // --- UPDATE LOGIC (Fixed for Android/Web) ---
   const handleUpdate = async () => {
     if (!editForm.pid) {
-        Alert.alert("Error", "Product ID is missing.");
-        return;
+      showAlert("Error", "Product ID is missing.");
+      return;
     }
 
     try {
@@ -108,8 +118,6 @@ const AdminDashboard = () => {
         : await SecureStore.getItemAsync('userToken');
 
       const formData = new FormData();
-
-      // Part 1: Product JSON data
       const productData = {
         pid: editForm.pid,
         pname: editForm.pname,
@@ -125,7 +133,6 @@ const AdminDashboard = () => {
         formData.append('product', JSON.stringify(productData));
       }
 
-      // Part 2: Image File (Changed key from 'photo' to 'image')
       if (selectedImage) {
         const uri = selectedImage;
         const name = uri.split('/').pop() || 'upload.jpg';
@@ -133,18 +140,13 @@ const AdminDashboard = () => {
         const type = match ? `image/${match[1]}` : `image/jpeg`;
 
         if (Platform.OS === 'web') {
-            const response = await fetch(uri);
-            const blob = await response.blob();
-            formData.append('image', blob, name); 
+          const response = await fetch(uri);
+          const blob = await response.blob();
+          formData.append('image', blob, name); 
         } else {
-            formData.append('image', {
-              uri: uri,
-              name: name,
-              type: type
-            } as any);
+          formData.append('image', { uri, name, type } as any);
         }
       } else {
-        // If no new image, send the existing URL as a string part
         formData.append('image', editForm.photo);
       }
 
@@ -154,22 +156,24 @@ const AdminDashboard = () => {
         {
           headers: { 
             'Authorization': `Bearer ${token}`,
-            // Let Axios handle boundary automatically
-          }
+            'Content-Type': 'multipart/form-data',
+          },
+          transformRequest: (data) => data, // Ensures FormData isn't stringified on Android
         }
       );
 
       if (response.status === 200 || response.status === 201) {
-        Alert.alert("Success", "Product updated successfully!");
+        showAlert("Success", "Product updated successfully!");
         setUpdateModalVisible(false);
         fetchProducts(); 
       }
     } catch (error: any) {
       console.error("Update Error:", error.response?.data);
-      Alert.alert("Error", "Update failed. Ensure backend keys match 'product' and 'image'.");
+      showAlert("Error", "Update failed. Check backend logs.");
     }
   };
 
+  // --- DELETE LOGIC ---
   const handleDelete = async () => {
     const performDelete = async () => {
       try {
@@ -181,11 +185,11 @@ const AdminDashboard = () => {
           headers: { 'Authorization': `Bearer ${token}` }
         });
 
-        Alert.alert("Success", "Product deleted successfully");
+        showAlert("Success", "Product deleted successfully");
         setUpdateModalVisible(false);
         fetchProducts();
       } catch (error) {
-        Alert.alert("Error", "Failed to delete product.");
+        showAlert("Error", "Failed to delete product.");
       }
     };
 
@@ -193,14 +197,14 @@ const AdminDashboard = () => {
       if (window.confirm(`Delete ${editForm.pname}?`)) performDelete();
     } else {
       Alert.alert("Confirm Delete", `Are you sure you want to delete ${editForm.pname}?`, [
-          { text: "Cancel", style: "cancel" },
-          { text: "Delete", style: "destructive", onPress: performDelete }
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: performDelete }
       ]);
     }
   };
 
+  // --- LOGOUT LOGIC ---
   const handleLogout = async () => {
-    // 1. Create the logout logic
     const performLogout = async () => {
       setDropdownVisible(false);
       try {
@@ -216,21 +220,28 @@ const AdminDashboard = () => {
       }
     };
 
-    // 2. Add platform-specific confirmation logic
     if (Platform.OS === 'web') {
-      if (window.confirm("Are you sure you want to logout?")) {
-        performLogout();
-      }
+      if (window.confirm("Are you sure you want to logout?")) performLogout();
     } else {
-      Alert.alert(
-        "Logout",
-        "Are you sure you want to logout?",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Logout", style: "destructive", onPress: performLogout }
-        ]
-      );
+      Alert.alert("Logout", "Are you sure you want to logout?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Logout", style: "destructive", onPress: performLogout }
+      ]);
     }
+  };
+
+  const openModal = (item: any) => {
+    const productId = item.pid || item.id; 
+    setSelectedImage(null); 
+    setEditForm({
+      pid: productId, 
+      pname: item.pname,
+      description: item.description || '',
+      price: item.price,
+      stock: item.stock,
+      photo: item.photo || ''
+    });
+    setUpdateModalVisible(true);
   };
 
   const filteredProducts = products.filter(item => 
@@ -260,7 +271,17 @@ const AdminDashboard = () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh} 
+            colors={['#2E8B57']} // Android spinner color
+            tintColor={'#2E8B57'} // iOS spinner color
+          />
+        }
+      >
         <View style={styles.welcomeCard}>
           <View style={styles.welcomeIconContainer}>
             <Ionicons name="hand-left-outline" size={30} color="#2E8B57" />
@@ -276,14 +297,14 @@ const AdminDashboard = () => {
           <Text style={styles.itemCount}>{filteredProducts.length} Items</Text>
         </View>
 
-        {loading ? (
+        {loading && !refreshing ? (
           <ActivityIndicator size="large" color="#2E8B57" style={{ marginTop: 20 }} />
         ) : (
           <View style={styles.productsGrid}>
             {filteredProducts.map((item, index) => (
               <View key={item.pid || item.id || index} style={styles.productCard}>
                 <Image 
-                key={`${item.pid || item.id}-${refreshKey}`}
+                  key={`${item.pid || item.id}-${refreshKey}`}
                   source={{ uri: `${item.photo}${item.photo?.includes('?') ? '&' : '?'}t=${refreshKey}` }} 
                   style={styles.productImage} 
                 />
@@ -298,10 +319,7 @@ const AdminDashboard = () => {
                       Stock: {item.stock}
                     </Text>
                   </View>
-                  <TouchableOpacity 
-                    style={styles.editButton}
-                    onPress={() => openModal(item)}
-                  >
+                  <TouchableOpacity style={styles.editButton} onPress={() => openModal(item)}>
                     <Text style={styles.editButtonText}>Update Item</Text>
                   </TouchableOpacity>
                 </View>
@@ -334,7 +352,7 @@ const AdminDashboard = () => {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* CENTERED UPDATE MODAL */}
+      {/* UPDATE MODAL */}
       <Modal 
         transparent 
         visible={updateModalVisible} 
@@ -342,10 +360,7 @@ const AdminDashboard = () => {
         onRequestClose={() => setUpdateModalVisible(false)}
       >
         <View style={styles.centeredModalOverlay}>
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.centeredModalContainer}
-          >
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.centeredModalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Manage Product</Text>
               <TouchableOpacity onPress={() => setUpdateModalVisible(false)}>
@@ -360,45 +375,24 @@ const AdminDashboard = () => {
                     source={{ uri: selectedImage || editForm.photo || 'https://via.placeholder.com/150' }} 
                     style={styles.modalImageLarge}
                   />
-                  <View style={styles.cameraIconOverlay}>
-                    <Ionicons name="camera" size={20} color="white" />
-                  </View>
+                  <View style={styles.cameraIconOverlay}><Ionicons name="camera" size={20} color="white" /></View>
                 </View>
               </TouchableOpacity>
 
               <Text style={styles.label}>Product Name</Text>
-              <TextInput 
-                style={styles.input} 
-                value={editForm.pname}
-                onChangeText={(text) => setEditForm({...editForm, pname: text})}
-              />
+              <TextInput style={styles.input} value={editForm.pname} onChangeText={(text) => setEditForm({...editForm, pname: text})} />
 
               <Text style={styles.label}>Description</Text>
-              <TextInput 
-                style={[styles.input, { height: 60 }]} 
-                multiline
-                value={editForm.description}
-                onChangeText={(text) => setEditForm({...editForm, description: text})}
-              />
+              <TextInput style={[styles.input, { height: 60 }]} multiline value={editForm.description} onChangeText={(text) => setEditForm({...editForm, description: text})} />
 
               <View style={styles.inputRow}>
                 <View style={{ flex: 1, marginRight: 10 }}>
                   <Text style={styles.label}>Price ($)</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    keyboardType="numeric"
-                    value={String(editForm.price)}
-                    onChangeText={(text) => setEditForm({...editForm, price: parseFloat(text) || 0})}
-                  />
+                  <TextInput style={styles.input} keyboardType="numeric" value={String(editForm.price)} onChangeText={(text) => setEditForm({...editForm, price: parseFloat(text) || 0})} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>Stock</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    keyboardType="numeric"
-                    value={String(editForm.stock)}
-                    onChangeText={(text) => setEditForm({...editForm, stock: parseInt(text) || 0})}
-                  />
+                  <TextInput style={styles.input} keyboardType="numeric" value={String(editForm.stock)} onChangeText={(text) => setEditForm({...editForm, stock: parseInt(text) || 0})} />
                 </View>
               </View>
 
@@ -420,11 +414,7 @@ const AdminDashboard = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
-  header: {
-   height: 140, // Increased from 70 to accommodate new space
-  paddingTop: 25, backgroundColor: '#2E8B57', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, zIndex: 10,
-    ...Platform.select({ android: { elevation: 6  }, ios: { shadowOpacity: 0.2 }, web: { boxShadow: '0px 2px 4px rgba(0,0,0,0.1)' } }),
-  },
+  header: { height: 140, paddingTop: 25, backgroundColor: '#2E8B57', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, zIndex: 10, ...Platform.select({ android: { elevation: 6 }, ios: { shadowOpacity: 0.2 }, web: { boxShadow: '0px 2px 4px rgba(0,0,0,0.1)' } }) },
   brandContainer: { flexDirection: 'row', alignItems: 'center' },
   brandName: { fontSize: 20, fontWeight: 'bold', color: 'white', marginLeft: 6 },
   headerSearchContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255, 255, 255, 0.2)', borderRadius: 8, paddingHorizontal: 10, height: 50, marginHorizontal: 10 },

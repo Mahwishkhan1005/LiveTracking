@@ -22,7 +22,20 @@ import {
 
 const ManagementPage = () => {
   const router = useRouter();
-  
+
+  // --- CROSS-PLATFORM ALERT HELPER ---
+  const showAlert = (title: string, message: string) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${title}: ${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
+  // --- VALIDATION HELPERS ---
+  const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const validatePhone = (phone: string) => /^[0-9]{10}$/.test(phone);
+
   // --- RIDER FORM STATE ---
   const [loadingRider, setLoadingRider] = useState(false);
   const [riderForm, setRiderForm] = useState({
@@ -59,14 +72,29 @@ const ManagementPage = () => {
     }
   };
 
-  // --- HANDLE ADD RIDER ---
+  // --- HANDLE ADD RIDER (With Validation) ---
   const handleAddRider = async () => {
-    if (!riderForm.name || !riderForm.phone || !riderForm.gmail || !riderForm.password || !riderForm.confirmPassword) {
-      Alert.alert("Error", "Please fill in all required fields");
+    const { name, phone, gmail, password, confirmPassword } = riderForm;
+
+    // Validation checks
+    if (!name || !phone || !gmail || !password || !confirmPassword) {
+      showAlert("Error", "Please fill in all required fields");
       return;
     }
-    if (riderForm.password !== riderForm.confirmPassword) {
-      Alert.alert("Error", "Passwords do not match");
+    if (!validateEmail(gmail)) {
+      showAlert("Invalid Email", "Please enter a valid email address.");
+      return;
+    }
+    if (!validatePhone(phone)) {
+      showAlert("Invalid Phone", "Phone number must be exactly 10 digits.");
+      return;
+    }
+    if (password.length < 8) {
+      showAlert("Weak Password", "Password must be at least 8 characters long.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      showAlert("Error", "Passwords do not match");
       return;
     }
 
@@ -88,23 +116,23 @@ const ManagementPage = () => {
       );
       
       if (response.status === 200 || response.status === 201) {
-        Alert.alert("Success", "Rider registered successfully!");
+        showAlert("Success", "Rider registered successfully!");
         setRiderForm({
           name: '', phone: '', gmail: '', password: '', 
           confirmPassword: '', vehicleNumber: '', vehicleType: 'MOTOR BIKE',
         });
       }
     } catch (error: any) {
-      Alert.alert("Registration Failed", error.response?.data?.message || "Error creating rider.");
+      showAlert("Registration Failed", error.response?.data?.message || "Error creating rider.");
     } finally {
       setLoadingRider(false);
     }
   };
 
-  // --- HANDLE ADD PRODUCT (Removed pid requirement) ---
+  // --- HANDLE ADD PRODUCT ---
   const handleAddProduct = async () => {
     if (!productForm.pname || !productForm.price || !selectedImage) {
-      Alert.alert("Error", "Please fill in all fields (Name, Price) and select an image.");
+      showAlert("Error", "Please fill in all fields (Name, Price) and select an image.");
       return;
     }
 
@@ -116,7 +144,6 @@ const ManagementPage = () => {
 
       const formData = new FormData();
 
-      // Removed pid from productData
       const productData = {
         pname: productForm.pname,
         description: productForm.description,
@@ -156,14 +183,14 @@ const ManagementPage = () => {
       );
 
       if (response.status === 200 || response.status === 201) {
-        Alert.alert("Success", "Product added successfully!");
+        showAlert("Success", "Product added successfully!");
         router.replace('/adminDashboard');
         setProductForm({ pname: '', description: '', price: '', stock: '' });
         setSelectedImage(null);
       }
     } catch (error: any) {
       console.error("Add Product Error:", error.response?.data);
-      Alert.alert("Error", "Failed to add product.");
+      showAlert("Error", "Failed to add product.");
     } finally {
       setLoadingProduct(false);
     }
@@ -179,8 +206,6 @@ const ManagementPage = () => {
         <Text style={styles.headerTitle}>Management Center</Text>
         <Text style={styles.headerSubtitle}>Add Rider or Add Product</Text>
       </View>
-       
-        
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
@@ -207,10 +232,11 @@ const ManagementPage = () => {
                 <Text style={styles.label}>Phone</Text>
                 <TextInput 
                   style={styles.input} 
-                  placeholder="Phone Number" 
+                  placeholder="10 Digits" 
                   keyboardType="phone-pad"
+                  maxLength={10}
                   value={riderForm.phone}
-                  onChangeText={(val) => setRiderForm({...riderForm, phone: val})}
+                  onChangeText={(val) => setRiderForm({...riderForm, phone: val.replace(/[^0-9]/g, '')})}
                 />
               </View>
             </View>
@@ -232,7 +258,7 @@ const ManagementPage = () => {
                 <Text style={styles.label}>Password</Text>
                 <TextInput 
                   style={styles.input} 
-                  placeholder="********" 
+                  placeholder="Min 8 chars" 
                   secureTextEntry
                   value={riderForm.password}
                   onChangeText={(val) => setRiderForm({...riderForm, password: val})}
@@ -242,7 +268,7 @@ const ManagementPage = () => {
                 <Text style={styles.label}>Confirm</Text>
                 <TextInput 
                   style={styles.input} 
-                  placeholder="********" 
+                  placeholder="Confirm" 
                   secureTextEntry
                   value={riderForm.confirmPassword}
                   onChangeText={(val) => setRiderForm({...riderForm, confirmPassword: val})}
@@ -283,7 +309,7 @@ const ManagementPage = () => {
 
           <View style={styles.dividerLarge} />
 
-          {/* --- ADD PRODUCT SECTION --- */}
+          {/* --- ADD PRODUCT SECTION (UI UNCHANGED) --- */}
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <Ionicons name="cart" size={24} color="#2E8B57" />
@@ -366,24 +392,10 @@ const styles = StyleSheet.create({
     height: 140, backgroundColor: '#2E8B57', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20,
     ...Platform.select({ android: { elevation: 4 }, ios: { shadowOpacity: 0.1 } })
   },
-
-  headerTitle: { 
-    fontSize: 24, 
-    fontWeight: 'bold', 
-    color: 'white',
-
-  },
-  headerTitleContainer: {
-    flexDirection: 'column', // Stacks text vertically
-    justifyContent: 'center',
-  },
-  headerSubtitle: {
-    fontSize: 15,
-    color: 'rgba(255, 255, 255, 0.8)', // Slightly transparent white
-    marginTop: 4,
-  },
+  headerTitle: { fontSize: 24, fontWeight: 'bold', color: 'white' },
+  headerTitleContainer: { flexDirection: 'column', justifyContent: 'center' },
+  headerSubtitle: { fontSize: 15, color: 'rgba(255, 255, 255, 0.8)', marginTop: 4 },
   backButton: { marginRight: 15 },
-  
   scrollContent: { padding: 20, paddingBottom: 40 },
   sectionCard: {
     backgroundColor: 'white', borderRadius: 15, padding: 18, elevation: 3,
@@ -406,7 +418,6 @@ const styles = StyleSheet.create({
   },
   submitButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
   dividerLarge: { height: 25 },
-  // Image Picker specific styles
   imagePicker: {
     width: '100%', height: 150, backgroundColor: '#FAFAFA', borderRadius: 10,
     borderWidth: 1, borderColor: '#E0E0E0', borderStyle: 'dashed',

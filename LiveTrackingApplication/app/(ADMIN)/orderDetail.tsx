@@ -63,7 +63,14 @@ const OrderDetails = () => {
   };
 
   const renderOrderItem = ({ item }: { item: any }) => (
-    <View style={styles.orderCard}>
+    <TouchableOpacity 
+    style={styles.orderCard} 
+    onPress={() => router.push({
+      pathname: '/(ADMIN)/assignRider',
+      params: { orderId: item.orderId }
+    })}
+    activeOpacity={0.7}
+  >
       <View style={styles.orderHeader}>
         <View>
           <Text style={styles.orderIdText}>Order #{item.orderId}</Text>
@@ -103,7 +110,7 @@ const OrderDetails = () => {
         <Text style={styles.totalLabel}>Total Amount</Text>
         <Text style={styles.totalAmountText}>${item.totalAmount}</Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (

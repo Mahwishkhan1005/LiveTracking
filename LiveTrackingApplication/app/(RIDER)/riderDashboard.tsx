@@ -1,47 +1,80 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage'; // Added for role and web token removal
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios'; // Ensure axios is installed
 import { useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store'; // Added for mobile token removal
+import * as SecureStore from 'expo-secure-store';
 import React, { useState } from 'react';
 import {
-    Alert, // Added for logout confirmation
-    Modal,
-    Platform,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View
 } from 'react-native';
 
-const AdminDashboard = () => {
+const RiderDashboard = () => {
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isActive, setIsActive] = useState(true); // Tracks Rider Status
+  const [statusLoading, setStatusLoading] = useState(false); // UI feedback for API call
+  
   const router = useRouter();
+
+  // --- TOGGLE RIDER STATUS ---
+  const toggleStatus = async (value: boolean) => {
+    setStatusLoading(true);
+    try {
+      const token = Platform.OS === 'web' 
+        ? await AsyncStorage.getItem('userToken') 
+        : await SecureStore.getItemAsync('userToken');
+
+      const response = await axios.put(
+        'http://192.168.0.223:8082/api/rider/status',
+        { isActive: value },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (response.status === 200) {
+        setIsActive(value);
+        if (Platform.OS === 'web') {
+            console.log("Status updated successfully");
+        } else {
+            // Optional: Alert.alert("Success", "Rider status updated successfully");
+        }
+      }
+    } catch (error) {
+      console.error("Error updating status:", error);
+      Alert.alert("Error", "Failed to update status. Please try again.");
+    } finally {
+      setStatusLoading(false);
+    }
+  };
 
   const toggleDropdown = () => setDropdownVisible(!dropdownVisible);
 
-  // --- LOGOUT HANDLER WITH TOKEN REMOVAL ---
-  // --- LOGOUT HANDLER WITH WEB & MOBILE ALERTS ---
   const handleLogout = () => {
     setDropdownVisible(false);
-
-    // Shared logout logic to clear storage and navigate
     const performLogout = async () => {
       try {
-        // 1. Remove the User Role (Both platforms)
         await AsyncStorage.removeItem('userRole'); 
-        
-        // 2. Remove the JWT Token based on the platform
         if (Platform.OS === 'web') {
           await AsyncStorage.removeItem('userToken'); 
         } else {
           await SecureStore.deleteItemAsync('userToken'); 
         }
-
-        // 3. Navigate back to Login screen
         router.replace('/'); 
       } catch (error) {
         console.error("Error during logout:", error);
@@ -49,23 +82,12 @@ const AdminDashboard = () => {
     };
 
     if (Platform.OS === 'web') {
-      // --- WEB CONFIRMATION ---
-      // Use native browser confirm for the Web platform
-      const confirmed = window.confirm("Are you sure you want to log out?");
-      if (confirmed) {
-        performLogout();
-      }
+      if (window.confirm("Are you sure you want to log out?")) performLogout();
     } else {
-      // --- MOBILE CONFIRMATION ---
-      // Use React Native Alert for Android and iOS
-      Alert.alert(
-        "Logout",
-        "Are you sure you want to log out?",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Logout", style: "destructive", onPress: performLogout }
-        ]
-      );
+      Alert.alert("Logout", "Are you sure you want to log out?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Logout", style: "destructive", onPress: performLogout }
+      ]);
     }
   };
 
@@ -82,7 +104,7 @@ const AdminDashboard = () => {
           <Ionicons name="search-outline" size={18} color="rgba(255,255,255,0.8)" />
           <TextInput
             style={styles.headerSearchInput}
-            placeholder="Search..."
+            placeholder="Search orders..."
             placeholderTextColor="rgba(255,255,255,0.6)"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -94,105 +116,148 @@ const AdminDashboard = () => {
         </TouchableOpacity>
       </View>
 
-      {/* --- DROPDOWN MENU --- */}
-      {dropdownVisible && (
-        <Modal
-          transparent={true}
-          visible={dropdownVisible}
-          animationType="fade"
-          onRequestClose={() => setDropdownVisible(false)}
-        >
-          <TouchableWithoutFeedback onPress={() => setDropdownVisible(false)}>
-            <View style={styles.modalOverlay}>
-              <View style={styles.dropdownMenu}>
-                <TouchableOpacity 
-                  style={styles.dropdownItem} 
-                  onPress={() => { setDropdownVisible(false); router.push('/manage'); }}
-                >
-                  <Ionicons name="person-add-outline" size={20} color="#333" />
-                  <Text style={styles.dropdownText}>Manage here</Text>
-                </TouchableOpacity>
-                <View style={styles.divider} />
-                <TouchableOpacity 
-                  style={styles.dropdownItem} 
-                  onPress={handleLogout} 
-                >
-                  <Ionicons name="log-out-outline" size={20} color="red" />
-                  <Text style={[styles.dropdownText, { color: 'red' }]}>Logout</Text>
-                </TouchableOpacity>
-              </View>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* --- THANK YOU CARD & STATUS TOGGLE --- */}
+        <View style={styles.thankYouCard}>
+          <View style={styles.thankYouContent}>
+            <View style={styles.iconCircle}>
+              <Ionicons name="heart" size={24} color="white" />
             </View>
-          </TouchableWithoutFeedback>
-        </Modal>
-      )}
+            <View style={styles.textContainer}>
+              <Text style={styles.thankYouTitle}>Thank you for being our</Text>
+              <Text style={styles.thankYouSubtitle}>delivery partners!</Text>
+            </View>
+          </View>
 
-      {/* --- CONTENT AREA --- */}
-      <View style={styles.content}>
-        <Text style={styles.welcomeText}>Admin Dashboard</Text>
-        {searchQuery ? <Text style={styles.searchStatus}>Results for: {searchQuery}</Text> : null}
-      </View>
+          {/* STATUS TOGGLE SECTION */}
+          <View style={styles.statusSection}>
+             <View>
+                <Text style={styles.statusLabel}>Availability Status</Text>
+                <Text style={[styles.statusIndicator, { color: isActive ? '#4ADE80' : '#FB7185' }]}>
+                    {isActive ? '● Online & Active' : '● Offline'}
+                </Text>
+             </View>
+             {statusLoading ? (
+                 <ActivityIndicator color="white" size="small" />
+             ) : (
+                <Switch
+                    trackColor={{ false: "#767577", true: "#2E8B57" }}
+                    thumbColor={isActive ? "#f4f3f4" : "#f4f3f4"}
+                    ios_backgroundColor="#3e3e3e"
+                    onValueChange={toggleStatus}
+                    value={isActive}
+                />
+             )}
+          </View>
+        </View>
+
+        {/* --- CONTENT AREA --- */}
+        <View style={styles.content}>
+          <Text style={styles.welcomeText}>Order Pipeline</Text>
+          {searchQuery ? <Text style={styles.searchStatus}>Results for: {searchQuery}</Text> : null}
+        </View>
+      </ScrollView>
+
+      {/* --- DROPDOWN MENU --- */}
+      <Modal transparent visible={dropdownVisible} animationType="fade">
+        <TouchableWithoutFeedback onPress={() => setDropdownVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.dropdownMenu}>
+              <TouchableOpacity style={styles.dropdownItem} onPress={handleLogout}>
+                <Ionicons name="log-out-outline" size={20} color="red" />
+                <Text style={[styles.dropdownText, { color: 'red' }]}>Logout</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8F9FA',
-  },
+  container: { flex: 1, backgroundColor: '#F8F9FA' },
   header: {
-    height: 70,
-    backgroundColor: '#2E8B57', // Sea Green
+    height: 120,
+    paddingTop: Platform.OS === 'android' ? 30 : 0,
+    backgroundColor: '#2E8B57',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 15,
+    zIndex: 10,
     ...Platform.select({
-      android: { elevation: 6 },
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-      },
-      web: {
-        boxShadow: '0px 2px 4px rgba(0,0,0,0.1)',
-      }
+        android: { elevation: 6 },
+        ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
+        web: { boxShadow: '0px 2px 4px rgba(0,0,0,0.1)' }
     }),
   },
-  brandContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  brandName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: 'white',
-    marginLeft: 6,
-  },
+  brandContainer: { flexDirection: 'row', alignItems: 'center' },
+  brandName: { fontSize: 18, fontWeight: 'bold', color: 'white', marginLeft: 6 },
   headerSearchContainer: {
-    flex: 1, 
+    flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255, 255, 255, 0.2)', 
+    borderRadius: 8, paddingHorizontal: 10, height: 45, marginHorizontal: 10,
+  },
+  headerSearchInput: { flex: 1, color: 'white', marginLeft: 8 },
+  
+  thankYouCard: {
+    backgroundColor: '#36656B',
+    margin: 15,
+    padding: 20,
+    borderRadius: 20,
+    elevation: 5,
+  },
+  thankYouContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)', 
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    height: 40,
-    marginHorizontal: 10,
+    marginBottom: 20,
   },
-  headerSearchInput: {
-    flex: 1,
+  iconCircle: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 10,
+    borderRadius: 25,
+  },
+  textContainer: {
+    marginLeft: 15,
+  },
+  thankYouTitle: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  thankYouSubtitle: {
     color: 'white',
-    fontSize: 15,
-    marginLeft: 8,
+    fontSize: 20,
+    fontWeight: '800',
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+  
+  // --- NEW STATUS SECTION STYLING ---
+  statusSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    padding: 15,
+    borderRadius: 15,
+    marginTop: 10,
   },
+  statusLabel: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  statusIndicator: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginTop: 2,
+  },
+
+  content: { padding: 20, alignItems: 'center' },
+  welcomeText: { fontSize: 22, fontWeight: 'bold', color: '#333' },
+  searchStatus: { marginTop: 10, color: '#666' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' },
   dropdownMenu: {
     position: 'absolute',
-    top: Platform.OS === 'web' ? 60 : 80,
+    top: Platform.OS === 'web' ? 100 : 110,
     right: 20,
     backgroundColor: 'white',
     borderRadius: 12,
@@ -200,35 +265,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     elevation: 10,
   },
-  dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-  },
-  dropdownText: {
-    fontSize: 16,
-    fontWeight:'bold',
-    marginLeft: 12,
-    color: '#333',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#eee',
-    marginVertical: 4,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  welcomeText: {
-    fontSize: 22,
-    fontWeight: 'bold',
-  },
-  searchStatus: {
-    marginTop: 10,
-    color: '#666',
-  },
+  dropdownItem: { flexDirection: 'row', alignItems: 'center', padding: 12 },
+  dropdownText: { fontSize: 16, fontWeight:'bold', marginLeft: 12, color: '#333' },
 });
 
-export default AdminDashboard;
+export default RiderDashboard;
