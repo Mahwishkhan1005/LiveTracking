@@ -66,7 +66,7 @@ const AdminDashboard = () => {
         ? await AsyncStorage.getItem('userToken') 
         : await SecureStore.getItemAsync('userToken');
 
-      const response = await axios.get('http://192.168.0.216:8081/api/admin/products/all', {
+      const response = await axios.get('http://192.168.0.223:8082/api/admin/products/all', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       setProducts(response.data);
@@ -149,7 +149,7 @@ const AdminDashboard = () => {
       }
 
       const response = await axios.put(
-        `http://192.168.0.112:8081/api/admin/products/update/${editForm.pid}`,
+        `http://192.168.0.223:8082/api/admin/products/update/${editForm.pid}`,
         formData,
         {
           headers: { 
@@ -177,7 +177,7 @@ const AdminDashboard = () => {
           ? await AsyncStorage.getItem('userToken') 
           : await SecureStore.getItemAsync('userToken');
 
-        await axios.delete(`http://192.168.0.112:8081/api/admin/products/delete/${editForm.pid}`, {
+        await axios.delete(`http://192.168.0.223:8082/api/admin/products/delete/${editForm.pid}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
 
@@ -200,17 +200,36 @@ const AdminDashboard = () => {
   };
 
   const handleLogout = async () => {
-    setDropdownVisible(false);
-    try {
-      await AsyncStorage.removeItem('userRole'); 
-      if (Platform.OS === 'web') {
-        await AsyncStorage.removeItem('userToken'); 
-      } else {
-        await SecureStore.deleteItemAsync('userToken'); 
+    // 1. Create the logout logic
+    const performLogout = async () => {
+      setDropdownVisible(false);
+      try {
+        await AsyncStorage.removeItem('userRole'); 
+        if (Platform.OS === 'web') {
+          await AsyncStorage.removeItem('userToken'); 
+        } else {
+          await SecureStore.deleteItemAsync('userToken'); 
+        }
+        router.replace('/'); 
+      } catch (error) {
+        console.error("Logout Error:", error);
       }
-      router.replace('/'); 
-    } catch (error) {
-      console.error("Logout Error:", error);
+    };
+
+    // 2. Add platform-specific confirmation logic
+    if (Platform.OS === 'web') {
+      if (window.confirm("Are you sure you want to logout?")) {
+        performLogout();
+      }
+    } else {
+      Alert.alert(
+        "Logout",
+        "Are you sure you want to logout?",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Logout", style: "destructive", onPress: performLogout }
+        ]
+      );
     }
   };
 

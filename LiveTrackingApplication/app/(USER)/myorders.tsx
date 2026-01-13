@@ -5,15 +5,15 @@ import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    FlatList,
-    Platform,
-    RefreshControl,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Platform,
+  RefreshControl,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 const OrderDetails = () => {
@@ -28,12 +28,10 @@ const OrderDetails = () => {
         ? await AsyncStorage.getItem('userToken') 
         : await SecureStore.getItemAsync('userToken');
 
-      // Using the API endpoint provided
-      const response = await axios.get('http://192.168.0.216:8081/api/user/orders', {
+      const response = await axios.get('http://192.168.0.223:8082/api/user/orders', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      // Handle both single object and array responses
       const data = Array.isArray(response.data) ? response.data : [response.data];
       setOrders(data);
     } catch (error) {
@@ -53,26 +51,41 @@ const OrderDetails = () => {
     fetchOrders();
   };
 
+  // UPDATED STATUS COLORS FOR THE FULL LIFECYCLE
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'PLACED': return '#F39C12'; // Orange
-      case 'CONFIRMED': return '#3498DB'; // Blue
-      case 'DELIVERED': return '#2E8B57'; // Sea Green
-      case 'CANCELLED': return '#E74C3C'; // Red
-      default: return '#7F8C8D';
+      case 'PLACED': return '#F39C12';           // Orange
+      case 'RIDER_REQUESTED': return '#9B59B6';  // Purple
+      case 'RIDER_ACCEPTED': return '#3498DB';   // Blue
+      case 'PICKED_UP': return '#1ABC9C';        // Turquoise
+      case 'DELIVERED': return '#2E8B57';        // Sea Green
+      case 'CANCELLED': return '#E74C3C';        // Red
+      case 'CASH_COLLECTED': return '#27AE60';   // Success Green
+      case 'PAYMENT_PENDING': return '#E67E22';  // Dark Orange
+      default: return '#7F8C8D';                 // Grey
     }
   };
 
   const renderOrderItem = ({ item }: { item: any }) => (
     <View style={styles.orderCard}>
       <View style={styles.orderHeader}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.orderIdText}>Order #{item.orderId}</Text>
-          <Text style={styles.dateText}>{new Date(item.createdAt).toLocaleDateString()} | {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+          <Text style={styles.dateText}>
+            {new Date(item.createdAt).toLocaleDateString()} | {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </Text>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-          <Text style={styles.statusText}>{item.status}</Text>
+          <Text style={styles.statusText}>{item.status.replace('_', ' ')}</Text>
         </View>
+      </View>
+
+      <View style={styles.divider} />
+
+    
+      <View style={styles.infoRow}>
+        <Text style={styles.infoLabel}>Payment:</Text>
+        <Text style={styles.infoValue}>{item.paymentMode}</Text>
       </View>
 
       <View style={styles.divider} />
@@ -81,7 +94,7 @@ const OrderDetails = () => {
       {item.items.map((subItem: any, index: number) => (
         <View key={index} style={styles.itemRow}>
           <Text style={styles.itemText}>Product ID: {subItem.productId} x {subItem.quantity}</Text>
-          <Text style={styles.itemPriceText}>₹{subItem.price * subItem.quantity}</Text>
+          <Text style={styles.itemPriceText}>${subItem.price * subItem.quantity}</Text>
         </View>
       ))}
 
@@ -89,7 +102,7 @@ const OrderDetails = () => {
 
       <View style={styles.totalRow}>
         <Text style={styles.totalLabel}>Total Amount</Text>
-        <Text style={styles.totalAmountText}>₹{item.totalAmount}</Text>
+        <Text style={styles.totalAmountText}>${item.totalAmount}</Text>
       </View>
     </View>
   );
@@ -102,6 +115,11 @@ const OrderDetails = () => {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Order Details</Text>
         <View style={{ width: 24 }} />
+      </View>
+
+      <View style={styles.subtitleCard}>
+        <Ionicons name="information-circle-outline" size={20} color="#2E8B57" />
+        <Text style={styles.subtitleText}>View all your orders here</Text>
       </View>
 
       {loading ? (
@@ -139,7 +157,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
   },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: 'white' },
-  listContainer: { padding: 15 },
+  subtitleCard: {
+    backgroundColor: 'white',
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 15,
+    marginTop: 15,
+    padding: 15,
+    borderRadius: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2E8B57',
+  },
+  subtitleText: {
+    fontSize: 15,
+    color: '#333',
+    fontWeight: '600',
+    marginLeft: 10,
+  },
+  listContainer: { padding: 15, paddingTop: 10 },
   orderCard: {
     backgroundColor: 'white',
     borderRadius: 15,
@@ -150,16 +189,19 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 5,
   },
-  orderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  orderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   orderIdText: { fontSize: 18, fontWeight: 'bold', color: '#2C3E50' },
   dateText: { fontSize: 13, color: '#7F8C8D', marginTop: 2 },
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
-  statusText: { color: 'white', fontSize: 12, fontWeight: 'bold' },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, minWidth: 90, alignItems: 'center' },
+  statusText: { color: 'white', fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' },
   divider: { height: 1, backgroundColor: '#ECF0F1', marginVertical: 12 },
-  sectionTitle: { fontSize: 14, fontWeight: 'bold', color: '#95A5A6', marginBottom: 8, textTransform: 'uppercase' },
+  infoRow: { flexDirection: 'row', marginBottom: 4 },
+  infoLabel: { fontSize: 14, color: '#7F8C8D', width: 80 },
+  infoValue: { fontSize: 14, color: '#2C3E50', fontWeight: '500' },
+  sectionTitle: { fontSize: 12, fontWeight: 'bold', color: '#95A5A6', marginBottom: 8, textTransform: 'uppercase' },
   itemRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  itemText: { fontSize: 15, color: '#34495E' },
-  itemPriceText: { fontSize: 15, fontWeight: '600', color: '#2C3E50' },
+  itemText: { fontSize: 14, color: '#34495E' },
+  itemPriceText: { fontSize: 14, fontWeight: '600', color: '#2C3E50' },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   totalLabel: { fontSize: 16, fontWeight: 'bold', color: '#2C3E50' },
   totalAmountText: { fontSize: 20, fontWeight: 'bold', color: '#2E8B57' },

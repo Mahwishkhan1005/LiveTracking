@@ -1,7 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import * as SecureStore from 'expo-secure-store';
+import React, { useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Platform,
@@ -11,12 +16,109 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import RazorpayCheckout from 'react-native-razorpay';
 import seafoodLogo from '../../assets/seafood.png';
 import { useCart } from '../../context/CartContext';
 
+const RAZORPAY_KEY_ID = 'rzp_test_YOUR_KEY_HERE';
+
 const CartPage = () => {
-  const { cartItems, removeFromCart, updateQuantity, cartTotal } = useCart(); 
-  const router = useRouter(); //
+  const { cartItems, removeFromCart, updateQuantity, cartTotal, clearCart } = useCart();
+  const [loading, setLoading] = useState(false);
+  // Aligned state with API payload values: 'ONLINE' or 'COD'
+  const [paymentMethod, setPaymentMethod] = useState<'ONLINE' | 'COD'>('ONLINE'); 
+  const router = useRouter();
+
+  const handleCheckout = async () => {
+    if (cartItems.length === 0) return;
+
+    setLoading(true);
+    try {
+      const token = Platform.OS === 'web'
+        ? await AsyncStorage.getItem('userToken')
+        : await SecureStore.getItemAsync('userToken');
+
+      // 1. Prepare Payload for Common Endpoint
+      const orderPayload = {
+        paymentMode: paymentMethod,
+        items: cartItems.map(item => ({
+          productId: item.pid,
+          quantity: item.quantity
+        }))
+      };
+
+      // 2. Place Order (Common Endpoint)
+      const orderResponse = await axios.post(
+        'http://192.168.0.223:8082/api/user/orders',
+        orderPayload,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+
+      const backendOrderId = orderResponse.data.orderId;
+
+      // 3. Conditional Logic based on Payment Mode
+     // 3. Conditional Logic based on Payment Mode
+      if (paymentMethod === 'ONLINE') {
+        // --- PREPAID FLOW (Razorpay) ---
+        const paymentResponse = await axios.post(
+          `http://192.168.0.223:8082/api/payments/create/${backendOrderId}`,
+          { amount: cartTotal * 100 },
+          { headers: { 'Authorization': `Bearer ${token}` } }
+        );
+
+        // FIX: Use camelCase 'razorpayOrderId' as provided by your backend response
+        const { razorpayOrderId, amount, currency } = paymentResponse.data;
+
+        const options = {
+          description: 'Seafood Purchase',
+          image: 'https://i.imgur.com/3g7nmJC.png',
+          currency: currency || 'INR',
+          key: RAZORPAY_KEY_ID,
+          amount: amount * 100, // Ensure amount is in paise
+          name: 'Seafood Store',
+          order_id: razorpayOrderId, // Pass the correct order ID here
+          prefill: { 
+            email: 'user@example.com', 
+            contact: '919999999999', 
+            name: 'User' 
+          },
+          theme: { color: '#2E8B57' }
+        };
+
+        try {
+          const data = await RazorpayCheckout.open(options);
+          
+          // Optional but Recommended: Send payment verification to your backend
+          /*
+          await axios.post('http://192.168.0.223:8082/api/payments/verify', {
+            razorpay_payment_id: data.razorpay_payment_id,
+            razorpay_order_id: data.razorpay_order_id,
+            razorpay_signature: data.razorpay_signature,
+            backend_order_id: backendOrderId
+          }, { headers: { 'Authorization': `Bearer ${token}` } });
+          */
+
+          Alert.alert("Success", `Payment Successful: ${data.razorpay_payment_id}`);
+        } catch (paymentError: any) {
+          console.error("Payment Cancelled or Failed:", paymentError);
+          Alert.alert("Payment Failed", paymentError.description || "The payment process was interrupted.");
+          return; // Exit so cart isn't cleared if payment fails
+        }
+      } else {
+        // --- COD FLOW ---
+        Alert.alert("Success", `Order #${backendOrderId} placed successfully!`);
+      }
+
+      // 4. Finalize
+      if (clearCart) clearCart();
+      router.replace('/(USER)/myorders');
+    } catch (error: any) {
+      console.error("Checkout Error:", error);
+      Alert.alert("Error", error.response?.data?.message || "Failed to process order. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const renderItem = ({ item }: { item: any }) => (
     <View style={styles.cartCard}>
@@ -24,7 +126,6 @@ const CartPage = () => {
       <View style={styles.itemDetails}>
         <Text style={styles.itemName}>{item.pname}</Text>
         <Text style={styles.itemPrice}>₹{item.price}</Text>
-        
         <View style={styles.quantityContainer}>
           <TouchableOpacity onPress={() => updateQuantity(item.pid, -1)} style={styles.qtyBtn}>
             <Ionicons name="remove" size={20} color="#333" />
@@ -41,20 +142,6 @@ const CartPage = () => {
     </View>
   );
 
-  // NEW: Component for the "Missed something?" section
-  const ListFooter = () => (
-    <View style={styles.missedContainer}>
-      <Text style={styles.missedText}>Missed something?</Text>
-      <TouchableOpacity 
-        style={styles.addMoreButton} 
-        onPress={() => router.back()} // Navigates back to userDashboard
-      >
-        <Ionicons name="add" size={20} color="white" />
-        <Text style={styles.addMoreButtonText}>Add More Items</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -62,126 +149,117 @@ const CartPage = () => {
           <Ionicons name="arrow-back" size={28} color="white" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Your Cart</Text>
-        <View style={{ width: 28 }} /> 
+        <View style={{ width: 28 }} />
       </View>
 
-      <View style={styles.bannerContainer}>
-        <Image source={seafoodLogo} style={styles.bannerImage} />
-      </View>
-
-      {cartItems.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="cart-outline" size={80} color="#ccc" />
-          <Text style={styles.emptyText}>Your cart is empty</Text>
-          <TouchableOpacity style={styles.shopBtn} onPress={() => router.back()}>
-            <Text style={styles.shopBtnText}>Go Shopping</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <>
-          <FlatList
-            data={cartItems}
-            keyExtractor={(item) => item.pid.toString()}
-            renderItem={renderItem}
-            ListFooterComponent={ListFooter} // ADDS SECTION BELOW CARDS
-            contentContainerStyle={styles.listContent}
-          />
-
-          <View style={styles.footer}>
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total Amount:</Text>
-              <Text style={styles.totalPrice}>₹{cartTotal}</Text>
-            </View>
-            <TouchableOpacity 
-              style={styles.checkoutBtn}
-             // onPress={() => router.push('/payment')}
-            >
-              <Text style={styles.checkoutText}>Proceed to Checkout</Text>
-            </TouchableOpacity>
+      <FlatList
+        data={cartItems}
+        keyExtractor={(item) => item.pid.toString()}
+        renderItem={renderItem}
+        ListHeaderComponent={() => (
+          <View style={styles.bannerContainer}>
+            <Image source={seafoodLogo} style={styles.bannerImage} />
           </View>
-        </>
-      )}
+        )}
+        ListFooterComponent={() => (
+          <View>
+            <View style={styles.missedContainer}>
+              <Text style={styles.missedText}>Missed something?</Text>
+              <TouchableOpacity style={styles.addMoreButton} onPress={() => router.back()}>
+                <Ionicons name="add" size={20} color="white" />
+                <Text style={styles.addMoreButtonText}>Add More Items</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.paymentSection}>
+              <Text style={styles.sectionTitle}>Select Payment Method</Text>
+              
+              <TouchableOpacity 
+                style={[styles.methodCard, paymentMethod === 'COD' && styles.activeMethod]} 
+                onPress={() => setPaymentMethod('COD')}
+              >
+                <Ionicons name="cash-outline" size={24} color={paymentMethod === 'COD' ? '#2E8B57' : '#666'} />
+                <Text style={[styles.methodText, paymentMethod === 'COD' && styles.activeMethodText]}>Cash on Delivery</Text>
+                {paymentMethod === 'COD' && <Ionicons name="checkmark-circle" size={20} color="#2E8B57" />}
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.methodCard, paymentMethod === 'ONLINE' && styles.activeMethod]} 
+                onPress={() => setPaymentMethod('ONLINE')}
+              >
+                <Ionicons name="card-outline" size={24} color={paymentMethod === 'ONLINE' ? '#2E8B57' : '#666'} />
+                <Text style={[styles.methodText, paymentMethod === 'ONLINE' && styles.activeMethodText]}>Online Payment (Razorpay)</Text>
+                {paymentMethod === 'ONLINE' && <Ionicons name="checkmark-circle" size={20} color="#2E8B57" />}
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+        contentContainerStyle={styles.listContent}
+      />
+
+      <View style={styles.footer}>
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>Total Amount:</Text>
+          <Text style={styles.totalPrice}>₹{cartTotal}</Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.checkoutBtn, loading && { opacity: 0.7 }]}
+          onPress={handleCheckout}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={styles.checkoutText}>
+              {paymentMethod === 'COD' ? 'Place Order (COD)' : 'Pay Now'}
+            </Text>
+          )}
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
-  header: { 
-    // Reduced height and removed paddingTop for web
-    height: Platform.OS === 'web' ? 60 : (Platform.OS === 'android' ? 100 : 90), 
-    paddingTop: Platform.OS === 'web' ? 0 : (Platform.OS === 'android' ? 40 : 20), 
-    backgroundColor: '#2E8B57', 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between', 
+  header: {
+    height: Platform.OS === 'web' ? 60 : (Platform.OS === 'android' ? 100 : 90),
+    paddingTop: Platform.OS === 'web' ? 0 : (Platform.OS === 'android' ? 40 : 20),
+    backgroundColor: '#2E8B57',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 15,
-    zIndex: 10,
   },
   headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold' },
-  bannerContainer: {
-    width: '100%',
-    // Increased height for web to 350 for more prominence
-    height: Platform.OS === 'web' ? 200 : 250, 
-    backgroundColor: 'white',
-    marginBottom: 10,
-    overflow: 'hidden',
-  },
-  // Ensure height is 100% to fill the new container height
+  bannerContainer: { width: '100%', height: 180, backgroundColor: 'white', marginBottom: 10, overflow: 'hidden' },
   bannerImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  
   listContent: { padding: 15 },
-  cartCard: { 
-    flexDirection: 'row', backgroundColor: 'white', borderRadius: 12, 
-    padding: 12, marginBottom: 15, alignItems: 'center', elevation: 2 
-  },
-  itemImage: { width: 80, height: 80, borderRadius: 8, resizeMode: 'cover' },
+  cartCard: { flexDirection: 'row', backgroundColor: 'white', borderRadius: 12, padding: 12, marginBottom: 15, elevation: 2 },
+  itemImage: { width: 80, height: 80, borderRadius: 8 },
   itemDetails: { flex: 1, marginLeft: 15 },
-  itemName: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+  itemName: { fontSize: 16, fontWeight: 'bold' },
   itemPrice: { fontSize: 14, color: '#2E8B57', marginVertical: 4 },
   quantityContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 5 },
   qtyBtn: { backgroundColor: '#eee', padding: 5, borderRadius: 4 },
   qtyText: { marginHorizontal: 15, fontSize: 16, fontWeight: 'bold' },
   deleteBtn: { padding: 10 },
-
-  missedContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 12,
-    marginTop: 5,
-    marginBottom: 20,
-    elevation: 2,
-    shadowOpacity: 0.1,
-  },
-  missedText: { fontSize: 16, color: '#333', fontWeight: '500' },
-  addMoreButton: {
-    backgroundColor: 'black',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-  },
-  addMoreButtonText: { color: 'white', fontWeight: 'bold', marginLeft: 4, fontSize: 14 },
-
-  footer: { 
-    backgroundColor: 'white', padding: 20, borderTopLeftRadius: 20, 
-    borderTopRightRadius: 20, elevation: 10 
-  },
+  missedContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: 15, borderRadius: 12, elevation: 2, marginBottom: 20 },
+  missedText: { fontSize: 16, color: '#333' },
+  addMoreButton: { backgroundColor: 'black', flexDirection: 'row', padding: 10, borderRadius: 10 },
+  addMoreButtonText: { color: 'white', fontWeight: 'bold', marginLeft: 4 },
+  paymentSection: { marginBottom: 20 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 12, color: '#333' },
+  methodCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', padding: 15, borderRadius: 12, marginBottom: 10, elevation: 1, borderWidth: 1, borderColor: '#eee' },
+  activeMethod: { borderColor: '#2E8B57', backgroundColor: '#F0F9F4' },
+  methodText: { flex: 1, marginLeft: 12, fontSize: 16, color: '#666' },
+  activeMethodText: { color: '#2E8B57', fontWeight: 'bold' },
+  footer: { backgroundColor: 'white', padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20, elevation: 10 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
-  totalLabel: { fontSize: 18, color: '#666', fontWeight: '500' },
-  totalPrice: { fontSize: 22, fontWeight: 'bold', color: '#333' },
-  checkoutBtn: { 
-    backgroundColor: '#2E8B57', padding: 18, borderRadius: 12, alignItems: 'center' 
-  },
+  totalLabel: { fontSize: 18, color: '#666' },
+  totalPrice: { fontSize: 22, fontWeight: 'bold' },
+  checkoutBtn: { backgroundColor: '#2E8B57', padding: 18, borderRadius: 12, alignItems: 'center' },
   checkoutText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
-  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyText: { fontSize: 18, color: '#999', marginTop: 10 },
-  shopBtn: { marginTop: 20, backgroundColor: '#2E8B57', padding: 12, borderRadius: 8 },
-  shopBtnText: { color: 'white', fontWeight: 'bold' }
 });
 
 export default CartPage;
