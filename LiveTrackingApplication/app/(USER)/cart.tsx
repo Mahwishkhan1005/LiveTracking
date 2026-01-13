@@ -20,7 +20,7 @@ import RazorpayCheckout from 'react-native-razorpay';
 import seafoodLogo from '../../assets/seafood.png';
 import { useCart } from '../../context/CartContext';
 
-const RAZORPAY_KEY_ID = 'rzp_test_YOUR_KEY_HERE';
+const RAZORPAY_KEY_ID = 'rzp_test_RxJu5AW2ZIFxcL';
 
 const CartPage = () => {
   const { cartItems, removeFromCart, updateQuantity, cartTotal, clearCart } = useCart();
@@ -66,17 +66,22 @@ const CartPage = () => {
           { headers: { 'Authorization': `Bearer ${token}` } }
         );
 
-        // FIX: Use camelCase 'razorpayOrderId' as provided by your backend response
-        const { razorpayOrderId, amount, currency } = paymentResponse.data;
+        // 1. Destructure the keys exactly as they appear in your JSON
+        const { razorpayOrderId } = paymentResponse.data;
+
+        // 2. Validate that the Order ID exists before opening Razorpay
+        if (!razorpayOrderId) {
+          Alert.alert("Error", "Failed to retrieve Razorpay Order ID from backend.");
+          setLoading(false);
+          return;
+        }
 
         const options = {
           description: 'Seafood Purchase',
           image: 'https://i.imgur.com/3g7nmJC.png',
-          currency: currency || 'INR',
-          key: RAZORPAY_KEY_ID,
-          amount: amount * 100, // Ensure amount is in paise
+          key: RAZORPAY_KEY_ID, 
           name: 'Seafood Store',
-          order_id: razorpayOrderId, // Pass the correct order ID here
+          order_id: razorpayOrderId, // Amount and Currency are fetched automatically from this ID
           prefill: { 
             email: 'user@example.com', 
             contact: '919999999999', 
@@ -85,24 +90,16 @@ const CartPage = () => {
           theme: { color: '#2E8B57' }
         };
 
+        // Debug Log: Check this in your terminal/console to verify the data
+        console.log("Razorpay Options:", options);
+
         try {
           const data = await RazorpayCheckout.open(options);
-          
-          // Optional but Recommended: Send payment verification to your backend
-          /*
-          await axios.post('http://192.168.0.223:8082/api/payments/verify', {
-            razorpay_payment_id: data.razorpay_payment_id,
-            razorpay_order_id: data.razorpay_order_id,
-            razorpay_signature: data.razorpay_signature,
-            backend_order_id: backendOrderId
-          }, { headers: { 'Authorization': `Bearer ${token}` } });
-          */
-
           Alert.alert("Success", `Payment Successful: ${data.razorpay_payment_id}`);
         } catch (paymentError: any) {
-          console.error("Payment Cancelled or Failed:", paymentError);
+          console.error("Payment Error Details:", paymentError);
           Alert.alert("Payment Failed", paymentError.description || "The payment process was interrupted.");
-          return; // Exit so cart isn't cleared if payment fails
+          return; 
         }
       } else {
         // --- COD FLOW ---
