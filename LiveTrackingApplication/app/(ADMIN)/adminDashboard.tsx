@@ -15,6 +15,10 @@ import {
   Platform,
   RefreshControl // Required for pull-to-refresh
   ,
+
+
+
+
   ScrollView,
   StyleSheet,
   Text,
@@ -68,7 +72,7 @@ const AdminDashboard = () => {
         ? await AsyncStorage.getItem('userToken') 
         : await SecureStore.getItemAsync('userToken');
 
-      const response = await axios.get('http://192.168.0.223:8082/api/admin/products/all', {
+      const response = await axios.get('http://192.168.0.224:8081/api/admin/products/all', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       setProducts(response.data);
@@ -151,7 +155,7 @@ const AdminDashboard = () => {
       }
 
       const response = await axios.put(
-        `http://192.168.0.223:8082/api/admin/products/update/${editForm.pid}`,
+        `http://192.168.0.224:8081/api/admin/products/update/${editForm.pid}`,
         formData,
         {
           headers: { 
@@ -181,7 +185,7 @@ const AdminDashboard = () => {
           ? await AsyncStorage.getItem('userToken') 
           : await SecureStore.getItemAsync('userToken');
 
-        await axios.delete(`http://192.168.0.223:8082/api/admin/products/delete/${editForm.pid}`, {
+        await axios.delete(`http://192.168.0.224:8081/api/admin/products/delete/${editForm.pid}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
 
@@ -337,6 +341,10 @@ const AdminDashboard = () => {
               <TouchableOpacity onPress={() => { setDropdownVisible(false); router.push('/manage'); }} style={styles.dropdownItem}>
                 <Ionicons name="person-add-outline" size={20} color="#333" />
                 <Text style={styles.dropdownText}>Manage here</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setDropdownVisible(false); router.push('/notification'); }} style={styles.dropdownItem}>
+                <Ionicons name="person-add-outline" size={20} color="#333" />
+                <Text style={styles.dropdownText}>Notifications</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => { setDropdownVisible(false); router.push('/(ADMIN)/orderDetail'); }} style={styles.dropdownItem}>
                 <Ionicons name="book-outline" size={20} color="#333" />

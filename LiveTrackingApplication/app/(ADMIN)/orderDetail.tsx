@@ -28,7 +28,7 @@ const OrderDetails = () => {
         ? await AsyncStorage.getItem('userToken') 
         : await SecureStore.getItemAsync('userToken');
 
-      const response = await axios.get('http://192.168.0.223:8082/api/admin/orders', {
+      const response = await axios.get('http://192.168.0.224:8081/api/admin/orders', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 

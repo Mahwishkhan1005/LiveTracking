@@ -37,7 +37,7 @@ const RiderDashboard = () => {
         : await SecureStore.getItemAsync('userToken');
 
       const response = await axios.put(
-        'http://192.168.0.223:8082/api/rider/status',
+        'http://192.168.0.224:8081/api/rider/status',
         { isActive: value },
         {
           headers: {
@@ -163,7 +163,11 @@ const RiderDashboard = () => {
         <TouchableWithoutFeedback onPress={() => setDropdownVisible(false)}>
           <View style={styles.modalOverlay}>
             <View style={styles.dropdownMenu}>
-              <TouchableOpacity style={styles.dropdownItem} onPress={handleLogout}>
+              <TouchableOpacity onPress={() => { setDropdownVisible(false); router.push('/notification'); }} style={styles.dropdownItem}>
+                              <Ionicons name="person-add-outline" size={20} color="#333" />
+                              <Text style={styles.dropdownText}>Notifications</Text>
+                            </TouchableOpacity>
+               <TouchableOpacity style={styles.dropdownItem} onPress={handleLogout}>
                 <Ionicons name="log-out-outline" size={20} color="red" />
                 <Text style={[styles.dropdownText, { color: 'red' }]}>Logout</Text>
               </TouchableOpacity>

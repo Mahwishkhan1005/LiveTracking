@@ -34,7 +34,7 @@ const UserDashboard = () => {
         ? await AsyncStorage.getItem('userToken') 
         : await SecureStore.getItemAsync('userToken');
 
-      const response = await axios.get('http://192.168.0.223:8082/api/admin/products/all', {
+      const response = await axios.get('http://192.168.0.224:8081/api/admin/products/all', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       setProducts(response.data);
@@ -175,6 +175,10 @@ const UserDashboard = () => {
                             <TouchableOpacity onPress={() => { setDropdownVisible(false); router.push('/(USER)/myorders'); }} style={styles.dropdownItem}>
                               <Ionicons name="book-outline" size={20} color="#333" />
                               <Text style={styles.dropdownText}>Order Details</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => { setDropdownVisible(false); router.push('/(USER)/notification'); }} style={styles.dropdownItem}>
+                              <Ionicons name="car-outline" size={20} color="#333" />
+                              <Text style={styles.dropdownText}>Notifications</Text>
                             </TouchableOpacity>
                             <TouchableOpacity onPress={() => { setDropdownVisible(false); router.push('/(USER)/CurrentOrder'); }} style={styles.dropdownItem}>
                               <Ionicons name="car-outline" size={20} color="#333" />

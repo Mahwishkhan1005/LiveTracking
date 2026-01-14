@@ -19,6 +19,7 @@ import {
 const OrderDetails = () => {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
 
@@ -28,7 +29,11 @@ const OrderDetails = () => {
         ? await AsyncStorage.getItem('userToken') 
         : await SecureStore.getItemAsync('userToken');
 
-      const response = await axios.get('http://192.168.0.223:8082/api/user/orders', {
+        // --- FETCH USER ID HERE ---
+    const savedUserId = await AsyncStorage.getItem('userId');
+    setUserId(savedUserId);
+
+      const response = await axios.get('http://192.168.0.224:8081/api/user/orders', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
@@ -67,7 +72,19 @@ const OrderDetails = () => {
   };
 
   const renderOrderItem = ({ item }: { item: any }) => (
-    <View style={styles.orderCard}>
+    <TouchableOpacity 
+    activeOpacity={0.8}
+    onPress={() => {
+      router.push({
+        pathname: '/(USER)/CurrentOrder',
+        params: { 
+          orderId: item.orderId,
+          // Assuming you have access to userId or can get it from storage
+          userId: userId 
+        }
+      });
+    }}
+  >
       <View style={styles.orderHeader}>
         <View style={{ flex: 1 }}>
           <Text style={styles.orderIdText}>Order #{item.orderId}</Text>
@@ -104,7 +121,7 @@ const OrderDetails = () => {
         <Text style={styles.totalLabel}>Total Amount</Text>
         <Text style={styles.totalAmountText}>${item.totalAmount}</Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (

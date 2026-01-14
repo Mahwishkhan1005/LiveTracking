@@ -20,6 +20,7 @@ import {
   View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { setupSSENotifications } from '../utils/notificationService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -70,60 +71,61 @@ const AuthScreen = () => {
     return isValid;
   };
 
-  const handleSubmit = async () => {
-    if (!validateForm()) return;
-    setLoading(true);
+ const handleSubmit = async () => {
+  if (!validateForm()) return;
+  setLoading(true);
 
-    const baseUrl = 'http://192.168.0.223:8082/api/auth';
-    const endpoint = isLogin ? `${baseUrl}/login` : `${baseUrl}/signup`;
-    const payload = isLogin 
-      ? { gmail: email, password } 
-      : { name, gmail: email, phone, password, confirmPassword };
+  const baseUrl = 'http://192.168.0.224:8081/api/auth';
+  const endpoint = isLogin ? `${baseUrl}/login` : `${baseUrl}/signup`;
+  const payload = isLogin 
+    ? { gmail: email, password } 
+    : { name, gmail: email, phone, password, confirmPassword };
 
-    try {
-      const response = await axios.post(endpoint, payload);
-      const { token } = response.data;
+  try {
+    const response = await axios.post(endpoint, payload);
+    const { token } = response.data;
 
-      if (token) {
-        if (Platform.OS === 'web') {
-          await AsyncStorage.setItem('userToken', token);
-        } else {
-          await SecureStore.setItemAsync('userToken', token);
-        }
-
-        const decoded: any = jwtDecode(token);
-        const userRole = decoded.role || decoded.roles;
-        await AsyncStorage.setItem('userRole', userRole);
-
-        Alert.alert("Success", isLogin ? "Logged in!" : "Account created!");
-        
-        if (userRole === 'ADMIN') router.replace('/adminDashboard');
-        else if (userRole === 'RIDER') router.replace('/riderDashboard');
-        else router.replace('/userDashboard');
-      } else if (!isLogin) {
-        Alert.alert("Success", "Account created successfully! Please login.");
-        setIsLogin(true);
-      }
-    } catch (error: any) {
-      // Check specifically for error status 400
-      if (error.response?.status === 400) {
-        const errorMsg = "Invalid credentials. Please check your email and password.";
-        
-        if (Platform.OS === 'web') {
-          // Standard browser alert for web
-          window.alert(errorMsg);
-        } else {
-          // React Native Alert for mobile
-          Alert.alert("Error", errorMsg);
-        }
+    if (token) {
+      // Save Token
+      if (Platform.OS === 'web') {
+        await AsyncStorage.setItem('userToken', token);
       } else {
-        // Fallback for other errors
-        Alert.alert("Error", error.response?.data?.message || "Something went wrong");
+        await SecureStore.setItemAsync('userToken', token);
       }
-    } finally {
-      setLoading(false);
+
+      // Decode Token
+      const decoded: any = jwtDecode(token);
+      const userRole = decoded.role || decoded.roles;
+      
+      // --- NEW: EXTRACT AND STORE USER ID ---
+      // Usually stored in 'id', 'userId', or 'sub' claims in JWT
+      const userId = decoded.id || decoded.userId || decoded.sub; 
+      if (userId) {
+        await AsyncStorage.setItem('userId', String(userId));
+        
+        // --- NEW: START LIVE NOTIFICATIONS ---
+        // This opens the SSE connection immediately upon login
+        setupSSENotifications(String(userId));
+      }
+
+      await AsyncStorage.setItem('userRole', userRole);
+
+      Alert.alert("Success", isLogin ? "Logged in!" : "Account created!");
+      
+      if (userRole === 'ADMIN') router.replace('/adminDashboard');
+      else if (userRole === 'RIDER') router.replace('/riderDashboard');
+      else router.replace('/userDashboard');
+    } else if (!isLogin) {
+      Alert.alert("Success", "Account created successfully! Please login.");
+      setIsLogin(true);
     }
-  };
+  } catch (error: any) {
+    // ... existing error handling ...
+    Alert.alert("Error", error.response?.data?.message || "Something went wrong");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <SafeAreaView style={styles.container}>
