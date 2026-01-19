@@ -52,7 +52,7 @@ const RiderDashboard = () => {
 
       const response = await axios.get(
         `${API_BASE_URL}/api/admin/assign/rider/${riderId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
 
       setOrders(response.data);
@@ -77,10 +77,10 @@ const RiderDashboard = () => {
   // --- 3. HANDLE DECISION (POST) ---
   const handleDecision = async (
     orderId: number,
-    decision: "ACCEPTED" | "REJECTED"
+    decision: "ACCEPTED" | "REJECTED",
   ) => {
     const isExpired =
-      orders.find((o) => o.order.id === orderId)?.status === "EXPIRED";
+      orders.find((o) => o.order.id === orderId)?.status === "EXPIRED ";
     if (isExpired) return;
 
     setProcessingId(orderId);
@@ -112,7 +112,7 @@ const RiderDashboard = () => {
 
       Alert.alert(
         "Success",
-        `Order #${orderId} has been ${decision.toLowerCase()}.`
+        `Order #${orderId} has been ${decision.toLowerCase()}.`,
       );
 
       fetchAssignedOrders(false);
@@ -135,7 +135,7 @@ const RiderDashboard = () => {
       await axios.put(
         `${API_BASE_URL}/api/rider/status`,
         { isActive: value },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       setIsActive(value);
     } catch (error) {
@@ -146,8 +146,16 @@ const RiderDashboard = () => {
   };
 
   const renderOrderItem = ({ item }: { item: any }) => {
-    const isExpired = item.status === "EXPIRED";
+    // 1. Create a helper to check if the order is already handled
     const isProcessing = processingId === item.order.id;
+    const isExpired = item.status === "EXPIRED";
+    const isAccepted = item.status === "ACCEPTED";
+    const isRejected = item.status === "REJECTED";
+
+    // Disable if it's processing OR if it has any final status
+    const isDisabled = isProcessing || isExpired || isAccepted || isRejected;
+
+    // const isProcessing = processingId === item.order.id;
 
     return (
       <View style={styles.orderCard}>
@@ -168,11 +176,16 @@ const RiderDashboard = () => {
           <View
             style={[
               styles.pendingBadge,
-              isExpired && { backgroundColor: "#F3F4F6" },
+              (isExpired || isRejected) && { backgroundColor: "#F3F4F6" },
+              isAccepted && { backgroundColor: "#DCFCE7" }, // Light green for accepted
             ]}
           >
             <Text
-              style={[styles.pendingText, isExpired && { color: "#6B7280" }]}
+              style={[
+                styles.pendingText,
+                (isExpired || isRejected) && { color: "#6B7280" },
+                isAccepted && { color: "#166534" }, // Dark green text
+              ]}
             >
               {item.status}
             </Text>
@@ -186,28 +199,30 @@ const RiderDashboard = () => {
             style={[
               styles.btn,
               styles.rejectBtn,
-              (isProcessing || isExpired) && { opacity: 0.5 },
+              isDisabled && { opacity: 0.5 },
             ]}
             onPress={() => handleDecision(item.order.id, "REJECTED")}
-            disabled={isProcessing || isExpired}
+            disabled={isDisabled}
           >
-            <Text style={styles.rejectBtnText}>Reject</Text>
+            <Text style={styles.rejectBtnText}>
+              {isRejected ? "Rejected" : "Reject"}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[
               styles.btn,
               styles.acceptBtn,
-              (isProcessing || isExpired) && { opacity: 0.5 },
+              isDisabled && { opacity: 0.5 },
             ]}
             onPress={() => handleDecision(item.order.id, "ACCEPTED")}
-            disabled={isProcessing || isExpired}
+            disabled={isDisabled}
           >
             {isProcessing ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
               <Text style={styles.acceptBtnText}>
-                {isExpired ? "Expired" : "Accept"}
+                {isExpired ? "Expired" : isAccepted ? "Accepted" : "Accept"}
               </Text>
             )}
           </TouchableOpacity>

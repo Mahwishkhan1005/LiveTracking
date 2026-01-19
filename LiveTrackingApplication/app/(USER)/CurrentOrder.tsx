@@ -22,8 +22,9 @@ const CurrentOrder = () => {
   const { orderId } = useLocalSearchParams();
   const [orderData, setOrderData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [userLocation, setUserLocation] = useState<any>(null);
 
+  // States for coordinates
+  const [userLocation, setUserLocation] = useState<any>(null);
   const [liveCoords, setLiveCoords] = useState<{
     lat: number;
     lng: number;
@@ -48,19 +49,25 @@ const CurrentOrder = () => {
   useEffect(() => {
     const initializeData = async () => {
       try {
+        console.log("📡 [Init] Starting initialization for Order:", orderId);
         const token = await getAuthToken();
+
         let { status } = await Location.requestForegroundPermissionsAsync();
         if (status === "granted") {
           let loc = await Location.getCurrentPositionAsync({});
+          console.log(
+            "👤 [Init] Initial User GPS obtained:",
+            loc.coords.latitude,
+            loc.coords.longitude,
+          );
           setUserLocation(loc.coords);
         }
 
         const response = await axios.get(
           `${API_BASE_URL}/api/user/orders/${orderId}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
+          { headers: { Authorization: `Bearer ${token}` } },
         );
+        console.log("📦 [Init] Order details fetched successfully.");
         setOrderData(response.data);
       } catch (error: any) {
         console.error("❌ [Init] Initialization failed:", error.message);
@@ -72,53 +79,53 @@ const CurrentOrder = () => {
     if (orderId) initializeData();
   }, [orderId]);
 
-  // --- 2. TRANSMIT USER LOCATION (POST) ---
+  // --- 2. TRANSMIT USER LOCATION & UPDATE UI ---
   useEffect(() => {
     let userTrackingSub: any;
 
     const startUserTracking = async () => {
       const token = await getAuthToken();
 
-      // Watch user's live position
       userTrackingSub = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
-          distanceInterval: 10, // Update every 10 meters to avoid spamming the server
+          distanceInterval: 10,
         },
         async (newLocation) => {
           const { latitude, longitude } = newLocation.coords;
+          console.log("👤 [GPS Watcher] User moved to:", latitude, longitude);
+          setUserLocation({ latitude, longitude });
 
-          const payload = {
-            lat: latitude,
-            lng: longitude,
-          };
-
-          console.log("📤 [POST] Transmitting User Location:", payload);
-
+          // Sync with server (POST)
           try {
-            await axios.post(`${API_BASE_URL}/api/user/location`, payload, {
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-            });
-            console.log("✅ [POST] User Location synced with server.");
+            await axios.post(
+              `${API_BASE_URL}/api/user/location`,
+              { lat: latitude, lng: longitude },
+              { headers: { Authorization: `Bearer ${token}` } },
+            );
+            console.log("📤 [Sync] User location sent to server.");
           } catch (err: any) {
-            console.error(
-              "❌ [POST] Failed to sync user location:",
-              err.message
+            console.error("❌ [Sync] POST failed:", err.message);
+          }
+
+          // Trigger map update
+          if (liveCoords) {
+            updateMarkersOnMap(
+              liveCoords.lat,
+              liveCoords.lng,
+              latitude,
+              longitude,
             );
           }
-        }
+        },
       );
     };
 
     startUserTracking();
-
     return () => {
       if (userTrackingSub) userTrackingSub.remove();
     };
-  }, []);
+  }, [liveCoords]);
 
   // --- 3. RECEIVE RIDER LOCATION (WEBSOCKET) ---
   useEffect(() => {
@@ -126,46 +133,65 @@ const CurrentOrder = () => {
       const token = await getAuthToken();
       const socketUrl = `ws://192.168.0.201:8081/ws/location?token=${token}`;
 
-      console.log(`🔌 [WS] Attempting to connect: ${socketUrl}`);
+      console.log("🔌 [WS] Connecting to:", socketUrl);
       ws.current = new WebSocket(socketUrl);
 
-      ws.current.onopen = () =>
-        console.log("✅ [WS] Connected to Location Service.");
+      ws.current.onopen = () => console.log("✅ [WS] WebSocket Connected.");
 
       ws.current.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
           if (data.lat && data.lng) {
+            console.log("🚲 [WS Message] Rider moved to:", data.lat, data.lng);
             setLiveCoords({ lat: data.lat, lng: data.lng });
-            updateRiderOnMap(data.lat, data.lng);
+
+            if (userLocation) {
+              updateMarkersOnMap(
+                data.lat,
+                data.lng,
+                userLocation.latitude,
+                userLocation.longitude,
+              );
+            }
           }
         } catch (error) {
-          console.error("❌ [WS] JSON parsing error:", error);
+          console.error("❌ [WS Message] Parse error:", error);
         }
       };
 
       ws.current.onerror = (err: any) =>
-        console.error("❌ [WS] Error occurred:", err.message);
-      ws.current.onclose = (event) => console.log(`🔌 [WS] Connection closed.`);
+        console.error("❌ [WS Error]:", err.message);
+      ws.current.onclose = () => console.log("🔌 [WS] Connection closed.");
     };
 
     if (userLocation) connectToTracking();
-
     return () => {
       if (ws.current) ws.current.close();
     };
   }, [userLocation]);
 
-  const updateRiderOnMap = (riderLat: number, riderLng: number) => {
-    if (webViewRef.current && userLocation) {
+  // --- 4. MAP UPDATE LOGIC ---
+  const updateMarkersOnMap = (
+    rLat: number,
+    rLng: number,
+    uLat: number,
+    uLng: number,
+  ) => {
+    if (webViewRef.current) {
+      console.log(
+        `🗺️ [Map] Injecting coordinates: Rider(${rLat}, ${rLng}) | User(${uLat}, ${uLng})`,
+      );
       const jsCode = `
-        if (typeof riderMarker !== 'undefined' && typeof riderPath !== 'undefined') {
-          const riderPos = [${riderLat}, ${riderLng}];
-          const userPos = [${userLocation.latitude}, ${userLocation.longitude}];
-          riderMarker.setLatLng(riderPos);
-          riderPath.setLatLngs([userPos, riderPos]);
+        if (typeof riderMarker !== 'undefined' && typeof userMarker !== 'undefined') {
+          const rPos = [${rLat}, ${rLng}];
+          const uPos = [${uLat}, ${uLng}];
+          
+          riderMarker.setLatLng(rPos);
+          userMarker.setLatLng(uPos);
+          riderPath.setLatLngs([uPos, rPos]);
+          
           const group = new L.featureGroup([riderMarker, userMarker]);
-          map.fitBounds(group.getBounds().pad(0.2));
+          map.fitBounds(group.getBounds().pad(0.3));
         }
       `;
       webViewRef.current.injectJavaScript(jsCode);
@@ -189,17 +215,19 @@ const CurrentOrder = () => {
     <body>
       <div id="map"></div>
       <script>
-        var userPos = [${userLocation?.latitude || 17.385}, ${userLocation?.longitude || 78.486}];
-        var map = L.map('map', { zoomControl: false }).setView(userPos, 15);
+        var initialPos = [${userLocation?.latitude || 17.385}, ${userLocation?.longitude || 78.486}];
+        var map = L.map('map', { zoomControl: false }).setView(initialPos, 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        var userMarker = L.marker(userPos, { icon: L.divIcon({ className: 'user-icon' }) }).addTo(map);
-        var riderMarker = L.marker(userPos, { icon: L.divIcon({ className: 'rider-icon' }) }).addTo(map);
-        var riderPath = L.polyline([userPos, userPos], { color: '#2E8B57', weight: 4, opacity: 0.6, dashArray: '10, 10' }).addTo(map);
+
+        var userMarker = L.marker(initialPos, { icon: L.divIcon({ className: 'user-icon' }) }).addTo(map);
+        var riderMarker = L.marker(initialPos, { icon: L.divIcon({ className: 'rider-icon' }) }).addTo(map);
+        var riderPath = L.polyline([initialPos, initialPos], { color: '#2E8B57', weight: 4, opacity: 0.6, dashArray: '10, 10' }).addTo(map);
       </script>
     </body>
     </html>
   `;
 
+  // UI rendering logic...
   if (loading) {
     return (
       <View style={[styles.container, { justifyContent: "center" }]}>
@@ -232,32 +260,28 @@ const CurrentOrder = () => {
           </View>
         </View>
 
+        {/* Live Coordinate Debug Card */}
         <View style={styles.coordCard}>
           <View style={styles.coordRow}>
             <Ionicons name="location" size={20} color="#2E8B57" />
-            <Text style={styles.coordTitle}>Live Rider Coordinates</Text>
+            <Text style={styles.coordTitle}>Live Locations</Text>
           </View>
-          {liveCoords ? (
-            <View style={styles.coordValues}>
-              <View style={styles.coordBox}>
-                <Text style={styles.coordLabel}>LATITUDE</Text>
-                <Text style={styles.coordValue}>
-                  {liveCoords.lat.toFixed(6)}
-                </Text>
-              </View>
-              <View style={styles.coordBox}>
-                <Text style={styles.coordLabel}>LONGITUDE</Text>
-                <Text style={styles.coordValue}>
-                  {liveCoords.lng.toFixed(6)}
-                </Text>
-              </View>
+          <View style={styles.coordValues}>
+            <View style={styles.coordBox}>
+              <Text style={styles.coordLabel}>RIDER LAT</Text>
+              <Text style={styles.coordValue}>
+                {liveCoords?.lat.toFixed(5) || "Waiting..."}
+              </Text>
             </View>
-          ) : (
-            <Text style={styles.waitingText}>Waiting for rider to move...</Text>
-          )}
+            <View style={styles.coordBox}>
+              <Text style={styles.coordLabel}>YOUR LAT</Text>
+              <Text style={styles.coordValue}>
+                {userLocation?.latitude.toFixed(5)}
+              </Text>
+            </View>
+          </View>
         </View>
 
-        {/* --- INFO CARDS --- */}
         <View style={styles.infoCard}>
           <Text style={styles.sectionHeading}>Order Details</Text>
           <View style={styles.infoRow}>
@@ -275,7 +299,7 @@ const CurrentOrder = () => {
 
         <View style={styles.infoCard}>
           <Text style={styles.sectionHeading}>Items Ordered</Text>
-          {orderData?.items.map((item: any, idx: number) => (
+          {orderData?.items?.map((item: any, idx: number) => (
             <View key={idx} style={styles.itemRow}>
               <Text style={styles.itemText}>Product ID: {item.productId}</Text>
               <Text style={styles.itemQuantity}>Qty: {item.quantity}</Text>
@@ -310,7 +334,7 @@ const CurrentOrder = () => {
   );
 };
 
-// ... Styles stay the same ...
+// ... Styles stay exactly as in your provided code ...
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8F9FA" },
   header: {
