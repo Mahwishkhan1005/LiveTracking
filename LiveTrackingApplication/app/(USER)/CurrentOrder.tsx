@@ -24,60 +24,43 @@ const CurrentOrder = () => {
   const [loading, setLoading] = useState(true);
   const [userLocation, setUserLocation] = useState<any>(null);
 
+  const [liveCoords, setLiveCoords] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+
   const webViewRef = useRef<WebView>(null);
   const ws = useRef<WebSocket | null>(null);
 
   const API_BASE_URL = "http://192.168.0.201:8081";
 
-  // Reusing universal token retrieval logic
   const getAuthToken = async () => {
-    console.log("🔑 [Auth] Attempting to retrieve user token...");
     try {
-      const token =
-        Platform.OS === "web"
-          ? await AsyncStorage.getItem("userToken")
-          : await SecureStore.getItemAsync("userToken");
-      console.log(
-        token
-          ? "✅ [Auth] Token retrieved successfully."
-          : "⚠️ [Auth] No token found in storage."
-      );
-      return token;
+      return Platform.OS === "web"
+        ? await AsyncStorage.getItem("userToken")
+        : await SecureStore.getItemAsync("userToken");
     } catch (e) {
-      console.error("❌ [Auth] Token access error:", e);
       return null;
     }
   };
 
+  // --- 1. INITIAL DATA FETCH ---
   useEffect(() => {
     const initializeData = async () => {
-      console.log(`🚀 [Init] Starting initialization for Order #${orderId}`);
       try {
         const token = await getAuthToken();
-
-        // 1. Get User Device Location
-        console.log("🛰️ [GPS] Requesting user location permissions...");
         let { status } = await Location.requestForegroundPermissionsAsync();
         if (status === "granted") {
-          console.log(
-            "🛰️ [GPS] Permission granted. Fetching current position..."
-          );
           let loc = await Location.getCurrentPositionAsync({});
-          console.log("🛰️ [GPS] User Location Acquired:", loc.coords);
           setUserLocation(loc.coords);
-        } else {
-          console.warn("⚠️ [GPS] Location permission denied.");
         }
 
-        // 2. Fetch Order Data via API
-        console.log(`📡 [API] Fetching details for Order #${orderId}...`);
         const response = await axios.get(
           `${API_BASE_URL}/api/user/orders/${orderId}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
         );
-        console.log("📡 [API] Order data received:", response.data);
         setOrderData(response.data);
       } catch (error: any) {
         console.error("❌ [Init] Initialization failed:", error.message);
@@ -89,84 +72,100 @@ const CurrentOrder = () => {
     if (orderId) initializeData();
   }, [orderId]);
 
-  // WebSocket lifecycle management
+  // --- 2. TRANSMIT USER LOCATION (POST) ---
+  useEffect(() => {
+    let userTrackingSub: any;
+
+    const startUserTracking = async () => {
+      const token = await getAuthToken();
+
+      // Watch user's live position
+      userTrackingSub = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          distanceInterval: 10, // Update every 10 meters to avoid spamming the server
+        },
+        async (newLocation) => {
+          const { latitude, longitude } = newLocation.coords;
+
+          const payload = {
+            lat: latitude,
+            lng: longitude,
+          };
+
+          console.log("📤 [POST] Transmitting User Location:", payload);
+
+          try {
+            await axios.post(`${API_BASE_URL}/api/user/location`, payload, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            });
+            console.log("✅ [POST] User Location synced with server.");
+          } catch (err: any) {
+            console.error(
+              "❌ [POST] Failed to sync user location:",
+              err.message
+            );
+          }
+        }
+      );
+    };
+
+    startUserTracking();
+
+    return () => {
+      if (userTrackingSub) userTrackingSub.remove();
+    };
+  }, []);
+
+  // --- 3. RECEIVE RIDER LOCATION (WEBSOCKET) ---
   useEffect(() => {
     const connectToTracking = async () => {
       const token = await getAuthToken();
       const socketUrl = `ws://192.168.0.201:8081/ws/location?token=${token}`;
 
-      console.log("🔌 [WS] Attempting to connect to:", socketUrl);
+      console.log(`🔌 [WS] Attempting to connect: ${socketUrl}`);
       ws.current = new WebSocket(socketUrl);
 
-      ws.current.onopen = () => {
+      ws.current.onopen = () =>
         console.log("✅ [WS] Connected to Location Service.");
-      };
 
       ws.current.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
-          // Log every incoming location update with a timestamp
-          console.log(
-            `📍 [WS Update] Received Rider Location @ ${new Date().toLocaleTimeString()}:`,
-            data
-          );
-
           if (data.lat && data.lng) {
+            setLiveCoords({ lat: data.lat, lng: data.lng });
             updateRiderOnMap(data.lat, data.lng);
-          } else {
-            console.warn(
-              "⚠️ [WS] Received data but coordinates are missing:",
-              data
-            );
           }
         } catch (error) {
-          console.error("❌ [WS] Message parsing error:", error);
+          console.error("❌ [WS] JSON parsing error:", error);
         }
       };
 
-      ws.current.onerror = (err) => {
-        console.error("❌ [WS] Connection Error:", err);
-      };
-
-      ws.current.onclose = (e) => {
-        console.log(
-          `ℹ️ [WS] Connection Closed. Code: ${e.code}, Reason: ${e.reason}`
-        );
-      };
+      ws.current.onerror = (err: any) =>
+        console.error("❌ [WS] Error occurred:", err.message);
+      ws.current.onclose = (event) => console.log(`🔌 [WS] Connection closed.`);
     };
 
-    if (userLocation) {
-      connectToTracking();
-    } else {
-      console.log(
-        "⏳ [WS] Waiting for user location before connecting WebSocket..."
-      );
-    }
+    if (userLocation) connectToTracking();
 
     return () => {
-      if (ws.current) {
-        console.log("🔌 [Cleanup] Closing WebSocket connection.");
-        ws.current.close();
-      }
+      if (ws.current) ws.current.close();
     };
   }, [userLocation]);
 
   const updateRiderOnMap = (riderLat: number, riderLng: number) => {
     if (webViewRef.current && userLocation) {
-      console.log("🎨 [Map] Injecting new coordinates into WebView...");
       const jsCode = `
         if (typeof riderMarker !== 'undefined' && typeof riderPath !== 'undefined') {
           const riderPos = [${riderLat}, ${riderLng}];
           const userPos = [${userLocation.latitude}, ${userLocation.longitude}];
-          
           riderMarker.setLatLng(riderPos);
           riderPath.setLatLngs([userPos, riderPos]);
-          
           const group = new L.featureGroup([riderMarker, userMarker]);
           map.fitBounds(group.getBounds().pad(0.2));
-          console.log("Web: Map elements updated successfully.");
-        } else {
-          console.error("Web: Leaflet elements not initialized yet.");
         }
       `;
       webViewRef.current.injectJavaScript(jsCode);
@@ -190,27 +189,12 @@ const CurrentOrder = () => {
     <body>
       <div id="map"></div>
       <script>
-        console.log("Web: Initializing Leaflet map...");
         var userPos = [${userLocation?.latitude || 17.385}, ${userLocation?.longitude || 78.486}];
         var map = L.map('map', { zoomControl: false }).setView(userPos, 15);
-        
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        
-        var userMarker = L.marker(userPos, { 
-          icon: L.divIcon({ className: 'user-icon' }) 
-        }).addTo(map);
-
-        var riderMarker = L.marker(userPos, { 
-          icon: L.divIcon({ className: 'rider-icon' }) 
-        }).addTo(map);
-        
-        var riderPath = L.polyline([userPos, userPos], {
-          color: '#2E8B57',
-          weight: 4,
-          opacity: 0.6,
-          dashArray: '10, 10'
-        }).addTo(map);
-        console.log("Web: Leaflet ready.");
+        var userMarker = L.marker(userPos, { icon: L.divIcon({ className: 'user-icon' }) }).addTo(map);
+        var riderMarker = L.marker(userPos, { icon: L.divIcon({ className: 'rider-icon' }) }).addTo(map);
+        var riderPath = L.polyline([userPos, userPos], { color: '#2E8B57', weight: 4, opacity: 0.6, dashArray: '10, 10' }).addTo(map);
       </script>
     </body>
     </html>
@@ -248,6 +232,32 @@ const CurrentOrder = () => {
           </View>
         </View>
 
+        <View style={styles.coordCard}>
+          <View style={styles.coordRow}>
+            <Ionicons name="location" size={20} color="#2E8B57" />
+            <Text style={styles.coordTitle}>Live Rider Coordinates</Text>
+          </View>
+          {liveCoords ? (
+            <View style={styles.coordValues}>
+              <View style={styles.coordBox}>
+                <Text style={styles.coordLabel}>LATITUDE</Text>
+                <Text style={styles.coordValue}>
+                  {liveCoords.lat.toFixed(6)}
+                </Text>
+              </View>
+              <View style={styles.coordBox}>
+                <Text style={styles.coordLabel}>LONGITUDE</Text>
+                <Text style={styles.coordValue}>
+                  {liveCoords.lng.toFixed(6)}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.waitingText}>Waiting for rider to move...</Text>
+          )}
+        </View>
+
+        {/* --- INFO CARDS --- */}
         <View style={styles.infoCard}>
           <Text style={styles.sectionHeading}>Order Details</Text>
           <View style={styles.infoRow}>
@@ -287,24 +297,20 @@ const CurrentOrder = () => {
           <View style={{ flex: 1, marginLeft: 15 }}>
             <Text style={styles.riderName}>
               {orderData?.riderId
-                ? "Your delivery partner is moving!"
+                ? "Rider is heading to you!"
                 : "Waiting for assignment..."}
             </Text>
             <Text style={styles.riderSubText}>
               Rider ID: #{orderData?.riderId || "..."}
             </Text>
           </View>
-          {orderData?.riderId && (
-            <TouchableOpacity style={styles.callButton}>
-              <Ionicons name="call" size={20} color="white" />
-            </TouchableOpacity>
-          )}
         </View>
       </View>
     </SafeAreaView>
   );
 };
 
+// ... Styles stay the same ...
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8F9FA" },
   header: {
@@ -336,6 +342,42 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   liveBadgeText: { color: "#4ADE80", fontSize: 10, fontWeight: "bold" },
+  coordCard: {
+    backgroundColor: "#fff",
+    marginHorizontal: 15,
+    marginBottom: 15,
+    padding: 15,
+    borderRadius: 15,
+    elevation: 2,
+  },
+  coordRow: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
+  coordTitle: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  coordValues: { flexDirection: "row", justifyContent: "space-between" },
+  coordBox: {
+    flex: 0.48,
+    backgroundColor: "#F0F9F4",
+    padding: 10,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  coordLabel: {
+    fontSize: 10,
+    color: "#2E8B57",
+    fontWeight: "bold",
+    marginBottom: 2,
+  },
+  coordValue: { fontSize: 14, fontWeight: "bold", color: "#333" },
+  waitingText: {
+    fontSize: 12,
+    color: "#999",
+    fontStyle: "italic",
+    textAlign: "center",
+  },
   infoCard: {
     backgroundColor: "white",
     marginHorizontal: 15,
@@ -379,7 +421,6 @@ const styles = StyleSheet.create({
   riderIcon: { backgroundColor: "#2E8B57", padding: 10, borderRadius: 50 },
   riderName: { fontSize: 15, fontWeight: "bold" },
   riderSubText: { fontSize: 12, color: "#777" },
-  callButton: { backgroundColor: "#2E8B57", padding: 12, borderRadius: 12 },
 });
 
 export default CurrentOrder;
