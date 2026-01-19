@@ -4,7 +4,7 @@ import axios from "axios";
 import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -23,7 +23,6 @@ const CurrentOrder = () => {
   const [orderData, setOrderData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // States for coordinates
   const [userLocation, setUserLocation] = useState<any>(null);
   const [liveCoords, setLiveCoords] = useState<{
     lat: number;
@@ -35,170 +34,9 @@ const CurrentOrder = () => {
 
   const API_BASE_URL = "http://192.168.0.201:8081";
 
-  const getAuthToken = async () => {
-    try {
-      return Platform.OS === "web"
-        ? await AsyncStorage.getItem("userToken")
-        : await SecureStore.getItemAsync("userToken");
-    } catch (e) {
-      return null;
-    }
-  };
-
-  // --- 1. INITIAL DATA FETCH ---
-  useEffect(() => {
-    const initializeData = async () => {
-      try {
-        console.log("📡 [Init] Starting initialization for Order:", orderId);
-        const token = await getAuthToken();
-
-        let { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === "granted") {
-          let loc = await Location.getCurrentPositionAsync({});
-          console.log(
-            "👤 [Init] Initial User GPS obtained:",
-            loc.coords.latitude,
-            loc.coords.longitude,
-          );
-          setUserLocation(loc.coords);
-        }
-
-        const response = await axios.get(
-          `${API_BASE_URL}/api/user/orders/${orderId}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-        console.log("📦 [Init] Order details fetched successfully.");
-        setOrderData(response.data);
-      } catch (error: any) {
-        console.error("❌ [Init] Initialization failed:", error.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (orderId) initializeData();
-  }, [orderId]);
-
-  // --- 2. TRANSMIT USER LOCATION & UPDATE UI ---
-  useEffect(() => {
-    let userTrackingSub: any;
-
-    const startUserTracking = async () => {
-      const token = await getAuthToken();
-
-      userTrackingSub = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.High,
-          distanceInterval: 10,
-        },
-        async (newLocation) => {
-          const { latitude, longitude } = newLocation.coords;
-          console.log("👤 [GPS Watcher] User moved to:", latitude, longitude);
-          setUserLocation({ latitude, longitude });
-
-          // Sync with server (POST)
-          try {
-            await axios.post(
-              `${API_BASE_URL}/api/user/location`,
-              { lat: latitude, lng: longitude },
-              { headers: { Authorization: `Bearer ${token}` } },
-            );
-            console.log("📤 [Sync] User location sent to server.");
-          } catch (err: any) {
-            console.error("❌ [Sync] POST failed:", err.message);
-          }
-
-          // Trigger map update
-          if (liveCoords) {
-            updateMarkersOnMap(
-              liveCoords.lat,
-              liveCoords.lng,
-              latitude,
-              longitude,
-            );
-          }
-        },
-      );
-    };
-
-    startUserTracking();
-    return () => {
-      if (userTrackingSub) userTrackingSub.remove();
-    };
-  }, [liveCoords]);
-
-  // --- 3. RECEIVE RIDER LOCATION (WEBSOCKET) ---
-  useEffect(() => {
-    const connectToTracking = async () => {
-      const token = await getAuthToken();
-      const socketUrl = `ws://192.168.0.201:8081/ws/location?token=${token}`;
-
-      console.log("🔌 [WS] Connecting to:", socketUrl);
-      ws.current = new WebSocket(socketUrl);
-
-      ws.current.onopen = () => console.log("✅ [WS] WebSocket Connected.");
-
-      ws.current.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (data.lat && data.lng) {
-            console.log("🚲 [WS Message] Rider moved to:", data.lat, data.lng);
-            setLiveCoords({ lat: data.lat, lng: data.lng });
-
-            if (userLocation) {
-              updateMarkersOnMap(
-                data.lat,
-                data.lng,
-                userLocation.latitude,
-                userLocation.longitude,
-              );
-            }
-          }
-        } catch (error) {
-          console.error("❌ [WS Message] Parse error:", error);
-        }
-      };
-
-      ws.current.onerror = (err: any) =>
-        console.error("❌ [WS Error]:", err.message);
-      ws.current.onclose = () => console.log("🔌 [WS] Connection closed.");
-    };
-
-    if (userLocation) connectToTracking();
-    return () => {
-      if (ws.current) ws.current.close();
-    };
-  }, [userLocation]);
-
-  // --- 4. MAP UPDATE LOGIC ---
-  const updateMarkersOnMap = (
-    rLat: number,
-    rLng: number,
-    uLat: number,
-    uLng: number,
-  ) => {
-    if (webViewRef.current) {
-      console.log(
-        `🗺️ [Map] Injecting coordinates: Rider(${rLat}, ${rLng}) | User(${uLat}, ${uLng})`,
-      );
-      const jsCode = `
-        if (typeof riderMarker !== 'undefined' && typeof userMarker !== 'undefined') {
-          const rPos = [${rLat}, ${rLng}];
-          const uPos = [${uLat}, ${uLng}];
-          
-          riderMarker.setLatLng(rPos);
-          userMarker.setLatLng(uPos);
-          riderPath.setLatLngs([uPos, rPos]);
-          
-          const group = new L.featureGroup([riderMarker, userMarker]);
-          map.fitBounds(group.getBounds().pad(0.3));
-        }
-      `;
-      webViewRef.current.injectJavaScript(jsCode);
-    }
-  };
-
-  const mapHtml = `
+  // --- 1. STATIC MAP HTML (Prevents Reloading) ---
+  const mapHtml = useMemo(
+    () => `
     <!DOCTYPE html>
     <html>
     <head>
@@ -208,6 +46,7 @@ const CurrentOrder = () => {
       <style>
         body { margin: 0; padding: 0; }
         #map { height: 100vh; width: 100vw; background: #eee; }
+        .leaflet-marker-icon { transition: all 0.5s linear; }
         .rider-icon { background-color: #2E8B57; width: 14px; height: 14px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 8px rgba(0,0,0,0.3); }
         .user-icon { background-color: #3498db; width: 14px; height: 14px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 8px rgba(0,0,0,0.3); }
       </style>
@@ -215,29 +54,122 @@ const CurrentOrder = () => {
     <body>
       <div id="map"></div>
       <script>
-        var initialPos = [${userLocation?.latitude || 17.385}, ${userLocation?.longitude || 78.486}];
-        var map = L.map('map', { zoomControl: false }).setView(initialPos, 15);
+        var map = L.map('map', { zoomControl: false }).setView([17.385, 78.486], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        var userMarker = L.marker([17.385, 78.486], { icon: L.divIcon({ className: 'user-icon' }) }).addTo(map);
+        var riderMarker = L.marker([17.385, 78.486], { icon: L.divIcon({ className: 'rider-icon' }) }).addTo(map);
+        var riderPath = L.polyline([], { color: '#2E8B57', weight: 4, opacity: 0.6, dashArray: '10, 10' }).addTo(map);
 
-        var userMarker = L.marker(initialPos, { icon: L.divIcon({ className: 'user-icon' }) }).addTo(map);
-        var riderMarker = L.marker(initialPos, { icon: L.divIcon({ className: 'rider-icon' }) }).addTo(map);
-        var riderPath = L.polyline([initialPos, initialPos], { color: '#2E8B57', weight: 4, opacity: 0.6, dashArray: '10, 10' }).addTo(map);
+        window.updatePositions = function(rLat, rLng, uLat, uLng) {
+          const rPos = [rLat, rLng];
+          const uPos = [uLat, uLng];
+          riderMarker.setLatLng(rPos);
+          userMarker.setLatLng(uPos);
+          riderPath.setLatLngs([uPos, rPos]);
+          const group = new L.featureGroup([riderMarker, userMarker]);
+          map.fitBounds(group.getBounds().pad(0.3));
+        };
       </script>
     </body>
     </html>
-  `;
+  `,
+    [],
+  );
 
-  // UI rendering logic...
-  if (loading) {
+  // --- 2. INITIAL FETCH ---
+  useEffect(() => {
+    const initializeData = async () => {
+      try {
+        const token =
+          Platform.OS === "web"
+            ? await AsyncStorage.getItem("userToken")
+            : await SecureStore.getItemAsync("userToken");
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
+          let loc = await Location.getCurrentPositionAsync({});
+          setUserLocation(loc.coords);
+        }
+        const response = await axios.get(
+          `${API_BASE_URL}/api/user/orders/${orderId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
+        setOrderData(response.data);
+      } catch (error: any) {
+        console.error("Init failed:", error.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (orderId) initializeData();
+  }, [orderId]);
+
+  const animateMap = (
+    rLat: number,
+    rLng: number,
+    uLat: number,
+    uLng: number,
+  ) => {
+    if (webViewRef.current) {
+      const jsCode = `window.updatePositions(${rLat}, ${rLng}, ${uLat}, ${uLng});`;
+      webViewRef.current.injectJavaScript(jsCode);
+    }
+  };
+
+  // --- 3. GPS & WS WATCHERS ---
+  useEffect(() => {
+    let userTrackingSub: any;
+    const startTracking = async () => {
+      const token =
+        Platform.OS === "web"
+          ? await AsyncStorage.getItem("userToken")
+          : await SecureStore.getItemAsync("userToken");
+
+      userTrackingSub = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.High, distanceInterval: 5 },
+        (loc) => {
+          const { latitude, longitude } = loc.coords;
+          setUserLocation({ latitude, longitude });
+          if (liveCoords)
+            animateMap(liveCoords.lat, liveCoords.lng, latitude, longitude);
+        },
+      );
+
+      const socketUrl = `ws://192.168.0.201:8081/ws/location?token=${token}`;
+      ws.current = new WebSocket(socketUrl);
+      ws.current.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        if (data.lat && data.lng) {
+          setLiveCoords({ lat: data.lat, lng: data.lng });
+          if (userLocation)
+            animateMap(
+              data.lat,
+              data.lng,
+              userLocation.latitude,
+              userLocation.longitude,
+            );
+        }
+      };
+    };
+
+    startTracking();
+    return () => {
+      if (userTrackingSub) userTrackingSub.remove();
+      if (ws.current) ws.current.close();
+    };
+  }, [userLocation, liveCoords]);
+
+  if (loading)
     return (
-      <View style={[styles.container, { justifyContent: "center" }]}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" color="#2E8B57" />
       </View>
     );
-  }
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={28} color="white" />
@@ -246,7 +178,11 @@ const CurrentOrder = () => {
         <View style={{ width: 28 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 30 }}
+      >
+        {/* Map Section */}
         <View style={styles.mapContainer}>
           <WebView
             ref={webViewRef}
@@ -255,88 +191,84 @@ const CurrentOrder = () => {
             style={styles.map}
             javaScriptEnabled={true}
           />
-          <View style={styles.liveBadgeOverlay}>
-            <Text style={styles.liveBadgeText}>● LIVE TRACKING</Text>
-          </View>
         </View>
 
-        {/* Live Coordinate Debug Card */}
-        <View style={styles.coordCard}>
-          <View style={styles.coordRow}>
-            <Ionicons name="location" size={20} color="#2E8B57" />
-            <Text style={styles.coordTitle}>Live Locations</Text>
-          </View>
+        {/* Live Coordinates Card */}
+        <View style={styles.infoCard}>
+          <Text style={styles.sectionHeading}>Live Tracking Info</Text>
           <View style={styles.coordValues}>
             <View style={styles.coordBox}>
               <Text style={styles.coordLabel}>RIDER LAT</Text>
               <Text style={styles.coordValue}>
-                {liveCoords?.lat.toFixed(5) || "Waiting..."}
+                {liveCoords?.lat.toFixed(4) || "..."}
               </Text>
             </View>
             <View style={styles.coordBox}>
               <Text style={styles.coordLabel}>YOUR LAT</Text>
               <Text style={styles.coordValue}>
-                {userLocation?.latitude.toFixed(5)}
+                {userLocation?.latitude.toFixed(4) || "..."}
               </Text>
             </View>
           </View>
         </View>
 
+        {/* Order Status Card */}
         <View style={styles.infoCard}>
-          <Text style={styles.sectionHeading}>Order Details</Text>
-          <View style={styles.infoRow}>
-            <Ionicons name="time-outline" size={24} color="#2E8B57" />
-            <View style={styles.infoTextContainer}>
-              <Text style={styles.infoTitle}>Status</Text>
-              <View style={styles.statusBadge}>
-                <Text style={styles.statusText}>
-                  {orderData?.status?.replace("_", " ")}
-                </Text>
-              </View>
+          <Text style={styles.sectionHeading}>Order Status</Text>
+          <View style={styles.statusRow}>
+            <Ionicons name="time-outline" size={22} color="#2E8B57" />
+            <View style={styles.statusBadge}>
+              <Text style={styles.statusText}>
+                {orderData?.status?.replace("_", " ") || "Processing"}
+              </Text>
             </View>
           </View>
+          <Text style={styles.orderIdSub}>Order ID: #{orderId}</Text>
         </View>
 
+        {/* Items Ordered Card */}
         <View style={styles.infoCard}>
           <Text style={styles.sectionHeading}>Items Ordered</Text>
           {orderData?.items?.map((item: any, idx: number) => (
             <View key={idx} style={styles.itemRow}>
-              <Text style={styles.itemText}>Product ID: {item.productId}</Text>
-              <Text style={styles.itemQuantity}>Qty: {item.quantity}</Text>
+              <View>
+                <Text style={styles.itemName}>Product #{item.productId}</Text>
+                <Text style={styles.itemQty}>Quantity: {item.quantity}</Text>
+              </View>
+              <Text style={styles.itemPrice}>₹{item.price || "N/A"}</Text>
             </View>
           ))}
           <View style={styles.divider} />
           <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Total Paid</Text>
+            <Text style={styles.totalLabel}>Total Amount</Text>
             <Text style={styles.totalValue}>₹{orderData?.totalAmount}</Text>
           </View>
         </View>
-      </ScrollView>
 
-      <View style={styles.footer}>
-        <View style={styles.riderRow}>
-          <View style={styles.riderIcon}>
+        {/* Rider Info Card */}
+        <View style={styles.riderCard}>
+          <View style={styles.riderAvatar}>
             <Ionicons name="bicycle" size={24} color="white" />
           </View>
-          <View style={{ flex: 1, marginLeft: 15 }}>
+          <View style={styles.riderInfo}>
             <Text style={styles.riderName}>
-              {orderData?.riderId
-                ? "Rider is heading to you!"
-                : "Waiting for assignment..."}
+              {orderData?.riderId ? "Rider Assigned" : "Finding Rider..."}
             </Text>
-            <Text style={styles.riderSubText}>
-              Rider ID: #{orderData?.riderId || "..."}
+            <Text style={styles.riderStatus}>
+              {orderData?.riderId
+                ? `ID: #${orderData.riderId}`
+                : "Wait while we assign a delivery partner"}
             </Text>
           </View>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
-// ... Styles stay exactly as in your provided code ...
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8F9FA" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
   header: {
     height: 100,
     paddingTop: 40,
@@ -348,25 +280,14 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: "white", fontSize: 18, fontWeight: "bold" },
   mapContainer: {
-    height: 250,
+    height: 280,
     margin: 15,
     borderRadius: 20,
     overflow: "hidden",
     elevation: 5,
-    backgroundColor: "#eee",
   },
   map: { flex: 1 },
-  liveBadgeOverlay: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 5,
-  },
-  liveBadgeText: { color: "#4ADE80", fontSize: 10, fontWeight: "bold" },
-  coordCard: {
+  infoCard: {
     backgroundColor: "#fff",
     marginHorizontal: 15,
     marginBottom: 15,
@@ -374,12 +295,11 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     elevation: 2,
   },
-  coordRow: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
-  coordTitle: {
-    marginLeft: 8,
+  sectionHeading: {
     fontSize: 14,
     fontWeight: "bold",
     color: "#333",
+    marginBottom: 12,
   },
   coordValues: { flexDirection: "row", justifyContent: "space-between" },
   coordBox: {
@@ -389,62 +309,56 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
   },
-  coordLabel: {
-    fontSize: 10,
-    color: "#2E8B57",
-    fontWeight: "bold",
-    marginBottom: 2,
-  },
-  coordValue: { fontSize: 14, fontWeight: "bold", color: "#333" },
-  waitingText: {
-    fontSize: 12,
-    color: "#999",
-    fontStyle: "italic",
-    textAlign: "center",
-  },
-  infoCard: {
-    backgroundColor: "white",
-    marginHorizontal: 15,
-    marginBottom: 15,
-    padding: 15,
-    borderRadius: 15,
-    elevation: 2,
-  },
-  infoRow: { flexDirection: "row", alignItems: "center" },
-  infoTextContainer: { marginLeft: 15 },
-  infoTitle: { fontSize: 14, fontWeight: "bold", color: "#333" },
+  coordLabel: { fontSize: 9, color: "#2E8B57", fontWeight: "bold" },
+  coordValue: { fontSize: 13, fontWeight: "bold" },
+  statusRow: { flexDirection: "row", alignItems: "center", marginTop: 5 },
   statusBadge: {
     backgroundColor: "#E8F5E9",
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 4,
-    borderRadius: 10,
-    marginTop: 4,
-    alignSelf: "flex-start",
+    borderRadius: 8,
+    marginLeft: 10,
   },
-  statusText: { color: "#2E8B57", fontWeight: "bold", fontSize: 11 },
-  sectionHeading: { fontSize: 14, fontWeight: "bold", marginBottom: 10 },
+  statusText: {
+    color: "#2E8B57",
+    fontWeight: "bold",
+    fontSize: 12,
+    textTransform: "capitalize",
+  },
+  orderIdSub: { fontSize: 11, color: "#999", marginTop: 8 },
   itemRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginVertical: 2,
+    alignItems: "center",
+    marginBottom: 10,
   },
-  itemText: { fontSize: 13, color: "#555" },
-  itemQuantity: { fontSize: 13, color: "#888" },
-  divider: { height: 1, backgroundColor: "#eee", marginVertical: 10 },
-  totalRow: { flexDirection: "row", justifyContent: "space-between" },
-  totalLabel: { fontSize: 14, fontWeight: "bold" },
-  totalValue: { fontSize: 16, fontWeight: "bold", color: "#2E8B57" },
-  footer: {
-    backgroundColor: "white",
-    padding: 20,
-    borderTopLeftRadius: 25,
-    borderTopRightRadius: 25,
-    elevation: 20,
+  itemName: { fontSize: 13, color: "#444", fontWeight: "600" },
+  itemQty: { fontSize: 11, color: "#777" },
+  itemPrice: { fontSize: 13, fontWeight: "bold", color: "#333" },
+  divider: { height: 1, backgroundColor: "#EEE", marginVertical: 10 },
+  totalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
-  riderRow: { flexDirection: "row", alignItems: "center" },
-  riderIcon: { backgroundColor: "#2E8B57", padding: 10, borderRadius: 50 },
-  riderName: { fontSize: 15, fontWeight: "bold" },
-  riderSubText: { fontSize: 12, color: "#777" },
+  totalLabel: { fontSize: 14, fontWeight: "bold", color: "#666" },
+  totalValue: { fontSize: 16, fontWeight: "800", color: "#2E8B57" },
+  riderCard: {
+    flexDirection: "row",
+    backgroundColor: "#36656B",
+    marginHorizontal: 15,
+    padding: 15,
+    borderRadius: 15,
+    alignItems: "center",
+  },
+  riderAvatar: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+    padding: 10,
+    borderRadius: 50,
+  },
+  riderInfo: { marginLeft: 15 },
+  riderName: { color: "white", fontWeight: "bold", fontSize: 14 },
+  riderStatus: { color: "rgba(255,255,255,0.7)", fontSize: 11, marginTop: 2 },
 });
 
 export default CurrentOrder;
