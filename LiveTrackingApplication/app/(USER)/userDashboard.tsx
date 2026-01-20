@@ -21,6 +21,7 @@ import {
   View,
 } from "react-native";
 import { useCart } from "../../context/CartContext";
+import { setupSSENotifications } from "../../utils/notificationService";
 
 const { width } = Dimensions.get("window");
 
@@ -44,10 +45,10 @@ const UserDashboard = () => {
           : await SecureStore.getItemAsync("userToken");
 
       const response = await axios.get(
-        "http://192.168.0.201:8081/api/admin/products/all",
+        "http://192.168.0.213:8081/api/admin/products/all",
         {
           headers: { Authorization: `Bearer ${token}` },
-        }
+        },
       );
       setProducts(response.data);
     } catch (error) {
@@ -59,6 +60,23 @@ const UserDashboard = () => {
 
   useEffect(() => {
     fetchProducts();
+  }, []);
+
+  useEffect(() => {
+    let stopSSE: (() => void) | undefined;
+
+    const startNotifications = async () => {
+      const uId = await AsyncStorage.getItem("userId");
+      if (uId) {
+        stopSSE = await setupSSENotifications(uId);
+      }
+    };
+
+    startNotifications();
+
+    return () => {
+      if (stopSSE) stopSSE();
+    };
   }, []);
 
   // --- LOGOUT HANDLER ---
@@ -102,7 +120,7 @@ const UserDashboard = () => {
   };
 
   const filteredProducts = products.filter((item) =>
-    item.pname?.toLowerCase().includes(searchQuery.toLowerCase())
+    item.pname?.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   return (
@@ -168,7 +186,7 @@ const UserDashboard = () => {
           <View style={styles.productsGrid}>
             {filteredProducts.map((item, index) => {
               const isInCart = cartItems.some(
-                (cartItem) => cartItem.pid === (item.pid || item.id)
+                (cartItem) => cartItem.pid === (item.pid || item.id),
               );
 
               return (

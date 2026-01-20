@@ -6,7 +6,7 @@ import { Platform } from "react-native";
 import RNEventSource from "react-native-sse";
 
 // UPDATED IP FOR NOTIFICATIONS
-const BASE_URL = "http://192.168.0.201:8081";
+const BASE_URL = "http://192.168.0.213:8081";
 
 /**
  * Fetch all notifications
@@ -37,7 +37,7 @@ export const getUnreadCount = async () => {
     `${BASE_URL}/api/notifications/unread-count`,
     {
       headers: { Authorization: `Bearer ${token}` },
-    }
+    },
   );
 
   return response.data;
@@ -57,7 +57,7 @@ export const markNotificationAsRead = async (id: string) => {
     {},
     {
       headers: { Authorization: `Bearer ${token}` },
-    }
+    },
   );
 };
 
@@ -76,7 +76,7 @@ export const setupSSENotifications = async (userId: string) => {
       headers: {
         Authorization: `Bearer ${token}`,
       },
-    }
+    },
   );
 
   eventSource.addEventListener("open" as any, () => {
@@ -112,7 +112,7 @@ export const setupSSENotifications = async (userId: string) => {
             senderId: data.senderId,
             link: data.link,
             orderId: data.orderId,
-          }
+          },
         );
       } catch (e) {
         console.error(`${type} parse error`, e);
@@ -126,9 +126,6 @@ export const setupSSENotifications = async (userId: string) => {
   };
 };
 
-/**
- * Local Notification
- */
 async function showLocalNotification(
   title: string,
   body: string,
@@ -136,7 +133,7 @@ async function showLocalNotification(
     senderId?: string;
     link?: string;
     orderId?: number;
-  }
+  },
 ) {
   await Notifications.scheduleNotificationAsync({
     content: {

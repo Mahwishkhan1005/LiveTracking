@@ -20,6 +20,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import { setupSSENotifications } from "../../utils/notificationService";
 
 const RiderDashboard = () => {
   const [dropdownVisible, setDropdownVisible] = useState(false);
@@ -33,7 +34,7 @@ const RiderDashboard = () => {
   const [processingId, setProcessingId] = useState<number | null>(null);
 
   const router = useRouter();
-  const API_BASE_URL = "http://192.168.0.201:8081";
+  const API_BASE_URL = "http://192.168.0.213:8081";
 
   // --- 1. FETCH ASSIGNED ORDERS (GET) ---
   const fetchAssignedOrders = async (showLoadingIndicator = true) => {
@@ -65,6 +66,23 @@ const RiderDashboard = () => {
 
   useEffect(() => {
     fetchAssignedOrders();
+  }, []);
+  useEffect(() => {
+    let stopSSE: (() => void) | undefined;
+
+    const startNotifications = async () => {
+      // Use the riderId already being used for API calls
+      const rId = await AsyncStorage.getItem("riderId");
+      if (rId) {
+        stopSSE = await setupSSENotifications(rId);
+      }
+    };
+
+    startNotifications();
+
+    return () => {
+      if (stopSSE) stopSSE();
+    };
   }, []);
 
   // --- 2. PULL TO REFRESH LOGIC ---

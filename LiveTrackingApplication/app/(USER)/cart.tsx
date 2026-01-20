@@ -28,7 +28,7 @@ const CartPage = () => {
   const [loading, setLoading] = useState(false);
   // Aligned state with API payload values: 'ONLINE' or 'COD'
   const [paymentMethod, setPaymentMethod] = useState<"ONLINE" | "COD">(
-    "ONLINE"
+    "ONLINE",
   );
   const router = useRouter();
 
@@ -53,9 +53,9 @@ const CartPage = () => {
 
       // 2. Place Order (Common Endpoint)
       const orderResponse = await axios.post(
-        "http://192.168.0.201:8081/api/user/orders",
+        "http://192.168.0.213:8081/api/user/orders",
         orderPayload,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
 
       const backendOrderId = orderResponse.data.orderId;
@@ -65,9 +65,9 @@ const CartPage = () => {
       if (paymentMethod === "ONLINE") {
         // --- PREPAID FLOW (Razorpay) ---
         const paymentResponse = await axios.post(
-          `http://192.168.0.201:8081/api/payments/create/${backendOrderId}`,
+          `http://192.168.0.213:8081/api/payments/create/${backendOrderId}`,
           { amount: cartTotal * 100 },
-          { headers: { Authorization: `Bearer ${token}` } }
+          { headers: { Authorization: `Bearer ${token}` } },
         );
 
         const { razorpayOrderId } = paymentResponse.data;
@@ -93,7 +93,7 @@ const CartPage = () => {
           // 2. Call Verification API with your required payload
           // Mapping Razorpay's snake_case response to your backend's camelCase keys
           await axios.post(
-            "http://192.168.0.201:8081/api/payments/verify",
+            "http://192.168.0.213:8081/api/payments/verify",
             {
               razorpayOrderId: data.razorpay_order_id,
               razorpayPaymentId: data.razorpay_payment_id,
@@ -101,12 +101,12 @@ const CartPage = () => {
             },
             {
               headers: { Authorization: `Bearer ${token}` },
-            }
+            },
           );
 
           Alert.alert(
             "Success",
-            "Payment verified and order placed successfully!"
+            "Payment verified and order placed successfully!",
           );
         } catch (paymentError: any) {
           console.error("Payment/Verification Error:", paymentError);
@@ -129,7 +129,7 @@ const CartPage = () => {
       Alert.alert(
         "Error",
         error.response?.data?.message ||
-          "Failed to process order. Please try again."
+          "Failed to process order. Please try again.",
       );
     } finally {
       setLoading(false);

@@ -76,7 +76,7 @@ const AuthScreen = () => {
     if (!validateForm()) return;
     setLoading(true);
 
-    const baseUrl = "http://192.168.0.201:8081/api/auth";
+    const baseUrl = "http://192.168.0.213:8081/api/auth";
     const endpoint = isLogin ? `${baseUrl}/login` : `${baseUrl}/signup`;
     const payload = isLogin
       ? { gmail: email, password }
@@ -133,7 +133,7 @@ const AuthScreen = () => {
       console.error("Auth Error:", error.response?.data || error.message);
       Alert.alert(
         "Error",
-        error.response?.data?.message || "Something went wrong"
+        error.response?.data?.message || "Something went wrong",
       );
     } finally {
       setLoading(false);

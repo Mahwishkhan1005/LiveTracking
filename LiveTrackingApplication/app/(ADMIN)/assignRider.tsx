@@ -20,11 +20,11 @@ import {
 const AssignRider = () => {
   const { orderId } = useLocalSearchParams();
   const router = useRouter();
-  const API_BASE_URL = "http://192.168.0.201:8081";
+  const API_BASE_URL = "http://192.168.0.213:8081";
 
   // --- STATES ---
   const [location, setLocation] = useState<Location.LocationObject | null>(
-    null
+    null,
   );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(true);
@@ -68,7 +68,7 @@ const AssignRider = () => {
         `${API_BASE_URL}/api/admin/riders/nearest`,
         {
           headers: { Authorization: `Bearer ${token}` },
-        }
+        },
       );
 
       setRiders(response.data);
@@ -110,7 +110,7 @@ const AssignRider = () => {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
             },
-          }
+          },
         );
 
         // --- SUCCESS: Set the assigned ID to disable UI ---
@@ -122,7 +122,7 @@ const AssignRider = () => {
       } catch (error: any) {
         console.error(
           "API Error Details:",
-          error.response?.data || error.message
+          error.response?.data || error.message,
         );
         Alert.alert("Error", "Failed to assign rider.");
       } finally {
@@ -132,7 +132,7 @@ const AssignRider = () => {
 
     if (Platform.OS === "web") {
       const confirmed = window.confirm(
-        `Assign Order #${orderId} to Rider ${rider.riderId.substring(0, 8)}?`
+        `Assign Order #${orderId} to Rider ${rider.riderId.substring(0, 8)}?`,
       );
       if (confirmed) await performAssignment();
     } else {
@@ -142,7 +142,7 @@ const AssignRider = () => {
         [
           { text: "Cancel", style: "cancel" },
           { text: "Assign", onPress: performAssignment },
-        ]
+        ],
       );
     }
   };

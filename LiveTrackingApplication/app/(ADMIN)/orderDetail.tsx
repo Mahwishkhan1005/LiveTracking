@@ -30,10 +30,10 @@ const OrderDetails = () => {
           : await SecureStore.getItemAsync("userToken");
 
       const response = await axios.get(
-        "http://192.168.0.201:8081/api/admin/orders",
+        "http://192.168.0.213:8081/api/admin/orders",
         {
           headers: { Authorization: `Bearer ${token}` },
-        }
+        },
       );
 
       const data = Array.isArray(response.data)

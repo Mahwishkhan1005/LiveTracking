@@ -93,7 +93,7 @@ const ManagementPage = () => {
     if (password.length < 8) {
       showAlert(
         "Weak Password",
-        "Password must be at least 8 characters long."
+        "Password must be at least 8 characters long.",
       );
       return;
     }
@@ -110,14 +110,14 @@ const ManagementPage = () => {
           : await SecureStore.getItemAsync("userToken");
 
       const response = await axios.post(
-        "http://192.168.0.201:8081/api/admin/create-rider",
+        "http://192.168.0.213:8081/api/admin/create-rider",
         riderForm,
         {
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-        }
+        },
       );
 
       if (response.status === 200 || response.status === 201) {
@@ -135,7 +135,7 @@ const ManagementPage = () => {
     } catch (error: any) {
       showAlert(
         "Registration Failed",
-        error.response?.data?.message || "Error creating rider."
+        error.response?.data?.message || "Error creating rider.",
       );
     } finally {
       setLoadingRider(false);
@@ -147,7 +147,7 @@ const ManagementPage = () => {
     if (!productForm.pname || !productForm.price || !selectedImage) {
       showAlert(
         "Error",
-        "Please fill in all fields (Name, Price) and select an image."
+        "Please fill in all fields (Name, Price) and select an image.",
       );
       return;
     }
@@ -198,7 +198,7 @@ const ManagementPage = () => {
             Authorization: `Bearer ${token}`,
             "Content-Type": "multipart/form-data",
           },
-        }
+        },
       );
 
       if (response.status === 200 || response.status === 201) {

@@ -32,9 +32,10 @@ const CurrentOrder = () => {
   const webViewRef = useRef<WebView>(null);
   const ws = useRef<WebSocket | null>(null);
 
-  const API_BASE_URL = "http://192.168.0.201:8081";
+  // --- ENSURE THIS IP MATCHES YOUR BACKEND ---
+  const API_BASE_URL = "http://192.168.0.213:8081";
 
-  // --- 1. STATIC MAP HTML (Prevents Reloading) ---
+  // --- 1. IMPROVED MAP HTML (Decoupled Marker Updates) ---
   const mapHtml = useMemo(
     () => `
     <!DOCTYPE html>
@@ -46,9 +47,22 @@ const CurrentOrder = () => {
       <style>
         body { margin: 0; padding: 0; }
         #map { height: 100vh; width: 100vw; background: #eee; }
-        .leaflet-marker-icon { transition: all 0.5s linear; }
         .rider-icon { background-color: #2E8B57; width: 14px; height: 14px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 8px rgba(0,0,0,0.3); }
         .user-icon { background-color: #3498db; width: 14px; height: 14px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 8px rgba(0,0,0,0.3); }
+        
+        /* Marker Name Styles */
+        .marker-label { 
+          color: white; 
+          padding: 2px 8px; 
+          border-radius: 4px; 
+          font-weight: bold; 
+          font-size: 11px; 
+          border: none;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .user-label { background: #3498db; }
+        .rider-label { background: #2E8B57; }
+        .leaflet-tooltip-top:before { border-top-color: transparent; }
       </style>
     </head>
     <body>
@@ -56,27 +70,58 @@ const CurrentOrder = () => {
       <script>
         var map = L.map('map', { zoomControl: false }).setView([17.385, 78.486], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        var userMarker = L.marker([17.385, 78.486], { icon: L.divIcon({ className: 'user-icon' }) }).addTo(map);
-        var riderMarker = L.marker([17.385, 78.486], { icon: L.divIcon({ className: 'rider-icon' }) }).addTo(map);
+        
+        // User Marker with Label
+        var userMarker = L.marker([0, 0], { icon: L.divIcon({ className: 'user-icon' }) }).addTo(map);
+        userMarker.bindTooltip("You", { 
+          permanent: true, 
+          direction: 'top', 
+          className: 'marker-label user-label', 
+          offset: [0, -10] 
+        }).openTooltip();
+
+        // Rider Marker with Label
+        var riderMarker = L.marker([0, 0], { icon: L.divIcon({ className: 'rider-icon' }) }).addTo(map);
+        riderMarker.bindTooltip("Rider", { 
+          permanent: true, 
+          direction: 'top', 
+          className: 'marker-label rider-label', 
+          offset: [0, -10] 
+        }).openTooltip();
+
         var riderPath = L.polyline([], { color: '#2E8B57', weight: 4, opacity: 0.6, dashArray: '10, 10' }).addTo(map);
 
-        window.updatePositions = function(rLat, rLng, uLat, uLng) {
-          const rPos = [rLat, rLng];
-          const uPos = [uLat, uLng];
-          riderMarker.setLatLng(rPos);
-          userMarker.setLatLng(uPos);
-          riderPath.setLatLngs([uPos, rPos]);
-          const group = new L.featureGroup([riderMarker, userMarker]);
-          map.fitBounds(group.getBounds().pad(0.3));
+        window.updateUser = function(lat, lng) {
+          userMarker.setLatLng([lat, lng]);
+          fitBounds();
         };
+
+        window.updateRider = function(lat, lng) {
+          riderMarker.setLatLng([lat, lng]);
+          fitBounds();
+        };
+
+        function fitBounds() {
+          var markers = [];
+          if (userMarker.getLatLng().lat !== 0) markers.push(userMarker.getLatLng());
+          if (riderMarker.getLatLng().lat !== 0) markers.push(riderMarker.getLatLng());
+          
+          if (markers.length > 0) {
+            var group = new L.featureGroup(markers.map(m => L.marker(m)));
+            map.fitBounds(group.getBounds().pad(0.3));
+          }
+          if (userMarker.getLatLng().lat !== 0 && riderMarker.getLatLng().lat !== 0) {
+            riderPath.setLatLngs([userMarker.getLatLng(), riderMarker.getLatLng()]);
+          }
+        }
       </script>
     </body>
     </html>
-  `,
+`,
     [],
   );
 
-  // --- 2. INITIAL FETCH ---
+  // --- 2. INITIAL FETCH (ORDER DETAILS & GPS) ---
   useEffect(() => {
     const initializeData = async () => {
       try {
@@ -84,11 +129,8 @@ const CurrentOrder = () => {
           Platform.OS === "web"
             ? await AsyncStorage.getItem("userToken")
             : await SecureStore.getItemAsync("userToken");
-        let { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === "granted") {
-          let loc = await Location.getCurrentPositionAsync({});
-          setUserLocation(loc.coords);
-        }
+
+        // Fetch Order Details
         const response = await axios.get(
           `${API_BASE_URL}/api/user/orders/${orderId}`,
           {
@@ -96,8 +138,26 @@ const CurrentOrder = () => {
           },
         );
         setOrderData(response.data);
+
+        // Fetch Initial GPS
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
+          let loc = await Location.getCurrentPositionAsync({});
+          const { latitude, longitude } = loc.coords;
+          setUserLocation({ latitude, longitude });
+          webViewRef.current?.injectJavaScript(
+            `window.updateUser(${latitude}, ${longitude});`,
+          );
+
+          // Send initial location to backend with updated field names
+          await axios.post(
+            `${API_BASE_URL}/api/user/location`,
+            { lat: latitude, lng: longitude },
+            { headers: { Authorization: `Bearer ${token}` } },
+          );
+        }
       } catch (error: any) {
-        console.error("Init failed:", error.message);
+        console.error("Fetch Order Error:", error.message);
       } finally {
         setLoading(false);
       }
@@ -105,19 +165,39 @@ const CurrentOrder = () => {
     if (orderId) initializeData();
   }, [orderId]);
 
-  const animateMap = (
-    rLat: number,
-    rLng: number,
-    uLat: number,
-    uLng: number,
-  ) => {
-    if (webViewRef.current) {
-      const jsCode = `window.updatePositions(${rLat}, ${rLng}, ${uLat}, ${uLng});`;
-      webViewRef.current.injectJavaScript(jsCode);
-    }
-  };
+  // --- 3. STABLE WEBSOCKET CONNECTION (Rider Updates) ---
+  useEffect(() => {
+    let socket: WebSocket;
 
-  // --- 3. GPS & WS WATCHERS ---
+    const connectWS = async () => {
+      const token =
+        Platform.OS === "web"
+          ? await AsyncStorage.getItem("userToken")
+          : await SecureStore.getItemAsync("userToken");
+
+      socket = new WebSocket(
+        `ws://192.168.0.213:8081/ws/location?token=${token}`,
+      );
+      ws.current = socket;
+
+      socket.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        if (data.lat && data.lng) {
+          setLiveCoords({ lat: data.lat, lng: data.lng });
+          webViewRef.current?.injectJavaScript(
+            `window.updateRider(${data.lat}, ${data.lng});`,
+          );
+        }
+      };
+
+      socket.onerror = (e) => console.error("WS connection error");
+    };
+
+    connectWS();
+    return () => socket?.close();
+  }, [orderId]);
+
+  // --- 4. CONTINUOUS GPS TRACKER & SEND TO BACKEND ---
   useEffect(() => {
     let userTrackingSub: any;
     const startTracking = async () => {
@@ -128,37 +208,34 @@ const CurrentOrder = () => {
 
       userTrackingSub = await Location.watchPositionAsync(
         { accuracy: Location.Accuracy.High, distanceInterval: 5 },
-        (loc) => {
+        async (loc) => {
           const { latitude, longitude } = loc.coords;
+
+          // A. Update local state
           setUserLocation({ latitude, longitude });
-          if (liveCoords)
-            animateMap(liveCoords.lat, liveCoords.lng, latitude, longitude);
+
+          // B. Update Map UI
+          webViewRef.current?.injectJavaScript(
+            `window.updateUser(${latitude}, ${longitude});`,
+          );
+
+          // C. Send live coordinates to Backend with updated field names
+          try {
+            await axios.post(
+              `${API_BASE_URL}/api/user/location`,
+              { lat: latitude, lng: longitude },
+              { headers: { Authorization: `Bearer ${token}` } },
+            );
+          } catch (error) {
+            console.error("Failed to update user location on server:", error);
+          }
         },
       );
-
-      const socketUrl = `ws://192.168.0.201:8081/ws/location?token=${token}`;
-      ws.current = new WebSocket(socketUrl);
-      ws.current.onmessage = (e) => {
-        const data = JSON.parse(e.data);
-        if (data.lat && data.lng) {
-          setLiveCoords({ lat: data.lat, lng: data.lng });
-          if (userLocation)
-            animateMap(
-              data.lat,
-              data.lng,
-              userLocation.latitude,
-              userLocation.longitude,
-            );
-        }
-      };
     };
 
     startTracking();
-    return () => {
-      if (userTrackingSub) userTrackingSub.remove();
-      if (ws.current) ws.current.close();
-    };
-  }, [userLocation, liveCoords]);
+    return () => userTrackingSub?.remove();
+  }, []);
 
   if (loading)
     return (
@@ -169,7 +246,6 @@ const CurrentOrder = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={28} color="white" />
@@ -182,7 +258,6 @@ const CurrentOrder = () => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 30 }}
       >
-        {/* Map Section */}
         <View style={styles.mapContainer}>
           <WebView
             ref={webViewRef}
@@ -193,7 +268,6 @@ const CurrentOrder = () => {
           />
         </View>
 
-        {/* Live Coordinates Card */}
         <View style={styles.infoCard}>
           <Text style={styles.sectionHeading}>Live Tracking Info</Text>
           <View style={styles.coordValues}>
@@ -212,7 +286,6 @@ const CurrentOrder = () => {
           </View>
         </View>
 
-        {/* Order Status Card */}
         <View style={styles.infoCard}>
           <Text style={styles.sectionHeading}>Order Status</Text>
           <View style={styles.statusRow}>
@@ -226,7 +299,6 @@ const CurrentOrder = () => {
           <Text style={styles.orderIdSub}>Order ID: #{orderId}</Text>
         </View>
 
-        {/* Items Ordered Card */}
         <View style={styles.infoCard}>
           <Text style={styles.sectionHeading}>Items Ordered</Text>
           {orderData?.items?.map((item: any, idx: number) => (
@@ -245,14 +317,13 @@ const CurrentOrder = () => {
           </View>
         </View>
 
-        {/* Rider Info Card */}
         <View style={styles.riderCard}>
           <View style={styles.riderAvatar}>
             <Ionicons name="bicycle" size={24} color="white" />
           </View>
           <View style={styles.riderInfo}>
             <Text style={styles.riderName}>
-              {orderData?.riderId ? "Rider Assigned" : "Finding Rider..."}
+              {orderData?.riderId ? `Rider Assigned` : "Finding Rider..."}
             </Text>
             <Text style={styles.riderStatus}>
               {orderData?.riderId

@@ -27,7 +27,7 @@ export default function NavigationPage() {
   const webViewRef = useRef<WebView>(null);
   const ws = useRef<WebSocket | null>(null);
 
-  const API_BASE_URL = "http://192.168.0.201:8081";
+  const API_BASE_URL = "http://192.168.0.213:8081";
 
   const getAuthToken = async () => {
     try {
