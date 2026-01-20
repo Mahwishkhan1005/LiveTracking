@@ -251,7 +251,7 @@ const UserDashboard = () => {
                 <Ionicons name="car-outline" size={20} color="#333" />
                 <Text style={styles.dropdownText}>Notifications</Text>
               </TouchableOpacity>
-              <TouchableOpacity
+              {/* <TouchableOpacity
                 onPress={() => {
                   setDropdownVisible(false);
                   router.push("/(USER)/CurrentOrder");
@@ -260,7 +260,7 @@ const UserDashboard = () => {
               >
                 <Ionicons name="car-outline" size={20} color="#333" />
                 <Text style={styles.dropdownText}>Track Order</Text>
-              </TouchableOpacity>
+              </TouchableOpacity> */}
               <View style={styles.divider} />
               <TouchableOpacity
                 onPress={handleLogout}

@@ -87,15 +87,16 @@ export const setupSSENotifications = async (userId: string) => {
     console.error("SSE error:", error);
   });
 
+  // UPDATED STATUS MAP
   const titleMap: Record<string, string> = {
-    PLACED: "📦 Order Placed",
-    RIDER_REQUESTED: "🔍 Finding Rider",
-    RIDER_ACCEPTED: "🚴 Rider Assigned",
+    ORDER_PLACED: "📦 Order Placed",
+    RIDER_ASSIGNED: "🚴 Rider Assigned",
+    RIDER_REQUEST: "🔍 Finding Rider",
     PICKED_UP: "🥡 Order Picked Up",
+    OUT_FOR_DELIVERY: "🚚 Out for Delivery",
+    REACHED_DESTINATION: "📍 Reached Destination",
     DELIVERED: "✅ Delivered",
-    CANCELLED: "❌ Order Cancelled",
-    CASH_COLLECTED: "💵 Payment Received",
-    PAYMENT_PENDING: "⏳ Payment Pending",
+    RIDER_EXPIRED: "⚠️ Rider Request Expired",
   };
 
   const eventTypes = Object.keys(titleMap);

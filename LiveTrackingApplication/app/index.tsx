@@ -4,7 +4,7 @@ import axios from "axios";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { jwtDecode } from "jwt-decode";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -22,11 +22,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { setupSSENotifications } from "../utils/notificationService";
 
-const { width, height } = Dimensions.get("window");
+const { width } = Dimensions.get("window");
 
 const AuthScreen = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true); // Tracking persistent session check
   const router = useRouter();
 
   // Form States
@@ -36,6 +37,44 @@ const AuthScreen = () => {
   const [phone, setPhone] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [errors, setErrors] = useState<any>({});
+
+  // --- PERSISTENCE LOGIC: CHECK FOR EXISTING SESSION ON LOAD ---
+  useEffect(() => {
+    const checkAutoLogin = async () => {
+      try {
+        const token =
+          Platform.OS === "web"
+            ? await AsyncStorage.getItem("userToken")
+            : await SecureStore.getItemAsync("userToken");
+
+        const userRole = await AsyncStorage.getItem("userRole");
+        const savedUserId = await AsyncStorage.getItem("userId");
+
+        if (token && userRole && savedUserId) {
+          // Decode token to verify expiration
+          const decoded: any = jwtDecode(token);
+          const currentTime = Date.now() / 1000;
+
+          if (decoded.exp > currentTime) {
+            // Token is still valid, setup notifications and redirect
+            setupSSENotifications(savedUserId);
+
+            if (userRole === "ADMIN") router.replace("/adminDashboard");
+            else if (userRole === "RIDER") router.replace("/riderDashboard");
+            else router.replace("/userDashboard");
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Auto-login failed:", error);
+      } finally {
+        // Stop the loading spinner to show login screen if no session found
+        setIsCheckingAuth(false);
+      }
+    };
+
+    checkAutoLogin();
+  }, []);
 
   const validateEmail = (email: string) =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -84,8 +123,6 @@ const AuthScreen = () => {
 
     try {
       const response = await axios.post(endpoint, payload);
-
-      // Extract token and id from response body
       const { token, id } = response.data;
 
       if (token) {
@@ -100,17 +137,12 @@ const AuthScreen = () => {
         const decoded: any = jwtDecode(token);
         const userRole = decoded.role || decoded.roles;
 
-        // 3. --- SAVE USER/RIDER ID ---
-        // Try body ID first, then JWT claims (id, userId, or sub)
+        // 3. Save User/Rider ID
         const userId = id || decoded.id || decoded.userId || decoded.sub;
 
         if (userId) {
           const stringId = String(userId);
-
-          // Save as 'userId' for general use
           await AsyncStorage.setItem("userId", stringId);
-
-          // Save specifically as 'riderId' for your dashboard logic
           await AsyncStorage.setItem("riderId", stringId);
 
           // Start live notifications
@@ -140,13 +172,19 @@ const AuthScreen = () => {
     }
   };
 
+  // While checking for a stored session, show a loading spinner
+  if (isCheckingAuth) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#36656B" />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F0F8A4" />
 
-      {/* KeyboardAvoidingView ensures the card moves up when the keyboard opens.
-          Using 'flex: 1' here is key for centering.
-      */}
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
@@ -281,38 +319,36 @@ const AuthScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F0F8A4", // Light background to emphasize the floating effect
+    backgroundColor: "#F0F8A4",
+  },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F0F8A4",
   },
   scrollContainer: {
     flexGrow: 1,
-    justifyContent: "center", // Centers card vertically
-    alignItems: "center", // Centers card horizontally
-    paddingVertical: 40, // Padding for small screens
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 40,
     paddingHorizontal: 20,
   },
   card: {
-    // Responsive width logic
     width: Platform.OS === "web" ? 400 : width * 0.88,
     backgroundColor: "#36656B",
     borderRadius: 30,
     padding: 35,
     alignItems: "center",
-
-    // "Floating" shadow effect
     ...Platform.select({
-      android: {
-        elevation: 20, // Higher elevation for prominent shadow
-      },
+      android: { elevation: 20 },
       ios: {
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 15 },
         shadowOpacity: 0.4,
         shadowRadius: 25,
       },
-      web: {
-        // Standard CSS shadow for web
-        boxShadow: "0px 20px 40px rgba(0,0,0,0.4)",
-      },
+      web: { boxShadow: "0px 20px 40px rgba(0,0,0,0.4)" },
     }),
   },
   iconContainer: {
@@ -354,7 +390,6 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: "center",
     marginTop: 20,
-    // Add a small shadow to the button itself
     elevation: 3,
   },
   buttonText: {

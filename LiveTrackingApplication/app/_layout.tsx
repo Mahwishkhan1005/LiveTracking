@@ -40,7 +40,27 @@ export default function RootLayout() {
 
     requestPermissions();
 
-    // 2️⃣ Handle notification tap (navigation)
+    // 2️⃣ Handle notification that launched the app (from killed state)
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) {
+        const data = response.notification.request.content.data as {
+          link?: string;
+          orderId?: number;
+        };
+
+        if (data?.link) {
+          router.push(data.link);
+        } else if (data?.orderId) {
+          // Fallback: Navigate to tracking page if orderId exists but link doesn't
+          router.push({
+            pathname: "/(USER)/CurrentOrder",
+            params: { orderId: data.orderId },
+          });
+        }
+      }
+    });
+
+    // 3️⃣ Handle notification tap while app is in background or foreground
     const responseListener =
       Notifications.addNotificationResponseReceivedListener((response) => {
         const data = response.notification.request.content.data as {
@@ -50,10 +70,16 @@ export default function RootLayout() {
 
         if (data?.link) {
           router.push(data.link);
+        } else if (data?.orderId) {
+          // Fallback navigation
+          router.push({
+            pathname: "/(USER)/CurrentOrder",
+            params: { orderId: data.orderId },
+          });
         }
       });
 
-    // 3️⃣ Cleanup listeners
+    // 4️⃣ Cleanup listeners
     return () => {
       responseListener.remove();
     };

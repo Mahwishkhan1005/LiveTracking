@@ -141,6 +141,41 @@ const RiderDashboard = () => {
       setProcessingId(null);
     }
   };
+  const handleLogout = () => {
+    setDropdownVisible(false);
+
+    const performLogout = async () => {
+      try {
+        // Clear User Role
+        await AsyncStorage.removeItem("userRole");
+        await AsyncStorage.removeItem("userId");
+        await AsyncStorage.removeItem("riderId");
+
+        // Clear Token based on platform
+        if (Platform.OS === "web") {
+          await AsyncStorage.removeItem("userToken");
+        } else {
+          await SecureStore.deleteItemAsync("userToken");
+        }
+
+        // Navigate back to the auth screen
+        router.replace("/");
+      } catch (error) {
+        console.error("Logout Error:", error);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      if (window.confirm("Are you sure you want to log out?")) {
+        performLogout();
+      }
+    } else {
+      Alert.alert("Logout", "Are you sure you want to log out?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Logout", style: "destructive", onPress: performLogout },
+      ]);
+    }
+  };
 
   const toggleStatus = async (value: boolean) => {
     setStatusLoading(true);
@@ -368,10 +403,7 @@ const RiderDashboard = () => {
               <View style={styles.menuDivider} />
               <TouchableOpacity
                 style={styles.dropdownItem}
-                onPress={() => {
-                  setDropdownVisible(false);
-                  router.replace("/");
-                }}
+                onPress={handleLogout} // Call the new handleLogout function
               >
                 <Ionicons name="log-out-outline" size={20} color="red" />
                 <Text style={[styles.dropdownText, { color: "red" }]}>
