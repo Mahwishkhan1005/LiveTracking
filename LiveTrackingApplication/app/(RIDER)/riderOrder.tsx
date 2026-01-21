@@ -28,7 +28,7 @@ const RiderOrders = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const API_BASE_URL = "http://192.168.0.213:8081";
+  const API_BASE_URL = "http://192.168.0.219:8081";
   const STATUS_OPTIONS = ["PICKED_UP", "DELIVERED", "CASH_COLLECTED"];
 
   // --- Helper: Universal Token Retrieval ---

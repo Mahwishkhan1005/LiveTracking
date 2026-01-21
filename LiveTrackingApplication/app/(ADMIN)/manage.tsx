@@ -110,7 +110,7 @@ const ManagementPage = () => {
           : await SecureStore.getItemAsync("userToken");
 
       const response = await axios.post(
-        "http://192.168.0.213:8081/api/admin/create-rider",
+        "http://192.168.0.219:8081/api/admin/create-rider",
         riderForm,
         {
           headers: {
@@ -191,7 +191,7 @@ const ManagementPage = () => {
       }
 
       const response = await axios.post(
-        "http://192.168.0.224:8081/api/admin/products/addimage",
+        "http://192.168.0.219:8081/api/admin/products/addimage",
         formData,
         {
           headers: {

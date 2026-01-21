@@ -34,7 +34,7 @@ const RiderDashboard = () => {
   const [processingId, setProcessingId] = useState<number | null>(null);
 
   const router = useRouter();
-  const API_BASE_URL = "http://192.168.0.213:8081";
+  const API_BASE_URL = "http://192.168.0.219:8081";
 
   // --- 1. FETCH ASSIGNED ORDERS (GET) ---
   const fetchAssignedOrders = async (showLoadingIndicator = true) => {

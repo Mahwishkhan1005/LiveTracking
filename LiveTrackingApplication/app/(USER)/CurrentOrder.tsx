@@ -33,7 +33,7 @@ const CurrentOrder = () => {
   const ws = useRef<WebSocket | null>(null);
 
   // --- ENSURE THIS IP MATCHES YOUR BACKEND ---
-  const API_BASE_URL = "http://192.168.0.213:8081";
+  const API_BASE_URL = "http://192.168.0.219:8081";
 
   // --- 1. IMPROVED MAP HTML (Decoupled Marker Updates) ---
   const mapHtml = useMemo(
@@ -176,7 +176,7 @@ const CurrentOrder = () => {
           : await SecureStore.getItemAsync("userToken");
 
       socket = new WebSocket(
-        `ws://192.168.0.213:8081/ws/location?token=${token}`,
+        `ws://192.168.0.219:8081/ws/location?token=${token}`,
       );
       ws.current = socket;
 

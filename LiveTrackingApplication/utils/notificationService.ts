@@ -5,8 +5,8 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import RNEventSource from "react-native-sse";
 
-// UPDATED IP FOR NOTIFICATIONS
-const BASE_URL = "http://192.168.0.213:8081";
+// Update this to match your backend IP
+const BASE_URL = "http://192.168.0.219:8081";
 
 /**
  * Fetch all notifications
@@ -87,7 +87,32 @@ export const setupSSENotifications = async (userId: string) => {
     console.error("SSE error:", error);
   });
 
-  // UPDATED STATUS MAP
+  /**
+   * 1. Generic Message Listener
+   * Handles messages that include a redirect link
+   */
+  eventSource.addEventListener("message" as any, (event: any) => {
+    try {
+      const data = JSON.parse(event.data || "{}");
+      if (data.link) {
+        showLocalNotification(
+          "New Update",
+          data.message || "Tap to view details",
+          {
+            senderId: data.senderId,
+            link: data.link,
+            orderId: data.orderId,
+          },
+        );
+      }
+    } catch (e) {
+      console.error("Generic message parse error", e);
+    }
+  });
+
+  /**
+   * 2. Specific Status Event Listeners
+   */
   const titleMap: Record<string, string> = {
     ORDER_PLACED: "📦 Order Placed",
     RIDER_ASSIGNED: "🚴 Rider Assigned",
@@ -127,6 +152,9 @@ export const setupSSENotifications = async (userId: string) => {
   };
 };
 
+/**
+ * Schedules a local notification on the device
+ */
 async function showLocalNotification(
   title: string,
   body: string,
@@ -136,13 +164,24 @@ async function showLocalNotification(
     orderId?: number;
   },
 ) {
+  // Fix: If link is a full URL, extract only the path for expo-router
+  let internalLink = extraData.link;
+  if (internalLink?.startsWith("http")) {
+    try {
+      const url = new URL(internalLink);
+      internalLink = url.pathname + url.search; // Converts http://192.../myorders to /myorders
+    } catch (e) {
+      console.error("Invalid URL in notification link", e);
+    }
+  }
+
   await Notifications.scheduleNotificationAsync({
     content: {
       title,
-      body: `From: ${extraData.senderId}\n${body}`,
+      body: extraData.senderId ? `From: ${extraData.senderId}\n${body}` : body,
       sound: true,
       data: {
-        link: extraData.link,
+        link: internalLink, // Use the cleaned internal path
         orderId: extraData.orderId,
       },
     },

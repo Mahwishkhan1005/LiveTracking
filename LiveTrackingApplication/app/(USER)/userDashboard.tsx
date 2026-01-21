@@ -45,7 +45,7 @@ const UserDashboard = () => {
           : await SecureStore.getItemAsync("userToken");
 
       const response = await axios.get(
-        "http://192.168.0.213:8081/api/admin/products/all",
+        "http://192.168.0.219:8081/api/admin/products/all",
         {
           headers: { Authorization: `Bearer ${token}` },
         },
