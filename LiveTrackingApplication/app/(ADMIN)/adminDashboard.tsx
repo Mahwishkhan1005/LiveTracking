@@ -362,7 +362,7 @@ const AdminDashboard = () => {
                     {item.description || "No description available."}
                   </Text>
                   <View style={styles.stockRow}>
-                    <Text style={styles.productPrice}>${item.price}</Text>
+                    <Text style={styles.productPrice}>₹{item.price}</Text>
                     <Text
                       style={[
                         styles.productStock,

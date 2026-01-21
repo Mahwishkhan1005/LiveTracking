@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
+import * as Location from "expo-location"; // Added for live tracking
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react"; // Added useRef
 import {
   ActivityIndicator,
   Alert,
@@ -34,6 +35,7 @@ const RiderDashboard = () => {
   const [processingId, setProcessingId] = useState<number | null>(null);
 
   const router = useRouter();
+  const ws = useRef<WebSocket | null>(null); // WebSocket reference
   const API_BASE_URL = "http://192.168.0.219:8081";
 
   // --- 1. FETCH ASSIGNED ORDERS (GET) ---
@@ -67,11 +69,76 @@ const RiderDashboard = () => {
   useEffect(() => {
     fetchAssignedOrders();
   }, []);
+
+  // --- 2. LIVE COORDINATES TRACKER (WebSocket) ---
+  useEffect(() => {
+    let locationSubscription: any;
+
+    const startLiveTracking = async () => {
+      // A. Request Permissions
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        console.error("Permission to access location was denied");
+        return;
+      }
+
+      // B. Get Auth Token for WebSocket
+      const token =
+        Platform.OS === "web"
+          ? await AsyncStorage.getItem("userToken")
+          : await SecureStore.getItemAsync("userToken");
+
+      // C. Initialize WebSocket
+      const socketUrl = `ws://192.168.0.219:8081/ws/location?token=${token}`;
+      ws.current = new WebSocket(socketUrl);
+
+      ws.current.onopen = () =>
+        console.log("🛰️ Rider Tracker WebSocket Connected");
+      ws.current.onerror = (e) => console.error("WebSocket Error:", e);
+
+      // D. Watch Position and Send Updates
+      locationSubscription = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          distanceInterval: 10, // Update every 10 meters
+        },
+        (newLocation) => {
+          const { latitude, longitude } = newLocation.coords;
+
+          // Send to server via WebSocket
+          if (ws.current?.readyState === WebSocket.OPEN) {
+            ws.current.send(
+              JSON.stringify({
+                lat: latitude,
+                lng: longitude,
+              }),
+            );
+            console.log(`📍 [DASHBOARD GPS]: Sent ${latitude}, ${longitude}`);
+          }
+        },
+      );
+    };
+
+    // Only track if rider is active
+    if (isActive) {
+      startLiveTracking();
+    }
+
+    // Cleanup: Stop tracking and close socket
+    return () => {
+      if (locationSubscription) locationSubscription.remove();
+      if (ws.current) {
+        ws.current.close();
+        ws.current = null;
+      }
+    };
+  }, [isActive]); // Re-run if rider toggles "Online/Offline" status
+
+  // --- 3. NOTIFICATION SETUP ---
   useEffect(() => {
     let stopSSE: (() => void) | undefined;
 
     const startNotifications = async () => {
-      // Use the riderId already being used for API calls
       const rId = await AsyncStorage.getItem("riderId");
       if (rId) {
         stopSSE = await setupSSENotifications(rId);
@@ -85,14 +152,14 @@ const RiderDashboard = () => {
     };
   }, []);
 
-  // --- 2. PULL TO REFRESH LOGIC ---
+  // --- 4. PULL TO REFRESH LOGIC ---
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchAssignedOrders(false); // Don't show the main ActivityIndicator
+    await fetchAssignedOrders(false);
     setRefreshing(false);
   }, []);
 
-  // --- 3. HANDLE DECISION (POST) ---
+  // --- 5. HANDLE DECISION (POST) ---
   const handleDecision = async (
     orderId: number,
     decision: "ACCEPTED" | "REJECTED",
@@ -141,24 +208,22 @@ const RiderDashboard = () => {
       setProcessingId(null);
     }
   };
+
   const handleLogout = () => {
     setDropdownVisible(false);
 
     const performLogout = async () => {
       try {
-        // Clear User Role
         await AsyncStorage.removeItem("userRole");
         await AsyncStorage.removeItem("userId");
         await AsyncStorage.removeItem("riderId");
 
-        // Clear Token based on platform
         if (Platform.OS === "web") {
           await AsyncStorage.removeItem("userToken");
         } else {
           await SecureStore.deleteItemAsync("userToken");
         }
 
-        // Navigate back to the auth screen
         router.replace("/");
       } catch (error) {
         console.error("Logout Error:", error);
@@ -199,16 +264,11 @@ const RiderDashboard = () => {
   };
 
   const renderOrderItem = ({ item }: { item: any }) => {
-    // 1. Create a helper to check if the order is already handled
     const isProcessing = processingId === item.order.id;
     const isExpired = item.status === "EXPIRED";
     const isAccepted = item.status === "ACCEPTED";
     const isRejected = item.status === "REJECTED";
-
-    // Disable if it's processing OR if it has any final status
     const isDisabled = isProcessing || isExpired || isAccepted || isRejected;
-
-    // const isProcessing = processingId === item.order.id;
 
     return (
       <View style={styles.orderCard}>
@@ -230,14 +290,14 @@ const RiderDashboard = () => {
             style={[
               styles.pendingBadge,
               (isExpired || isRejected) && { backgroundColor: "#F3F4F6" },
-              isAccepted && { backgroundColor: "#DCFCE7" }, // Light green for accepted
+              isAccepted && { backgroundColor: "#DCFCE7" },
             ]}
           >
             <Text
               style={[
                 styles.pendingText,
                 (isExpired || isRejected) && { color: "#6B7280" },
-                isAccepted && { color: "#166534" }, // Dark green text
+                isAccepted && { color: "#166534" },
               ]}
             >
               {item.status}
@@ -403,7 +463,7 @@ const RiderDashboard = () => {
               <View style={styles.menuDivider} />
               <TouchableOpacity
                 style={styles.dropdownItem}
-                onPress={handleLogout} // Call the new handleLogout function
+                onPress={handleLogout}
               >
                 <Ionicons name="log-out-outline" size={20} color="red" />
                 <Text style={[styles.dropdownText, { color: "red" }]}>

@@ -126,7 +126,7 @@ const OrderDetails = () => {
             Product ID: {subItem.productId} x {subItem.quantity}
           </Text>
           <Text style={styles.itemPriceText}>
-            ${subItem.price * subItem.quantity}
+            ₹{subItem.price * subItem.quantity}
           </Text>
         </View>
       ))}
@@ -135,7 +135,7 @@ const OrderDetails = () => {
 
       <View style={styles.totalRow}>
         <Text style={styles.totalLabel}>Total Amount</Text>
-        <Text style={styles.totalAmountText}>${item.totalAmount}</Text>
+        <Text style={styles.totalAmountText}>₹{item.totalAmount}</Text>
       </View>
     </TouchableOpacity>
   );
