@@ -6,7 +6,7 @@ import { Platform } from "react-native";
 import RNEventSource from "react-native-sse";
 
 // Update this to match your backend IP
-const BASE_URL = "http://192.168.0.219:8081";
+const BASE_URL = "http://192.168.0.232:8081";
 
 /**
  * Fetch all notifications

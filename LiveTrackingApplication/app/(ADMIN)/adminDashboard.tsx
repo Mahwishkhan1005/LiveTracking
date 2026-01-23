@@ -70,7 +70,7 @@ const AdminDashboard = () => {
           : await SecureStore.getItemAsync("userToken");
 
       const response = await axios.get(
-        "http://192.168.0.219:8081/api/admin/products/all",
+        "http://192.168.0.232:8081/api/admin/products/all",
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -176,7 +176,7 @@ const AdminDashboard = () => {
       }
 
       const response = await axios.put(
-        `http://192.168.0.219:8081/api/admin/products/update/${editForm.pid}`,
+        `http://192.168.0.232:8081/api/admin/products/update/${editForm.pid}`,
         formData,
         {
           headers: {
@@ -208,7 +208,7 @@ const AdminDashboard = () => {
             : await SecureStore.getItemAsync("userToken");
 
         await axios.delete(
-          `http://192.168.0.219:8081/api/admin/products/delete/${editForm.pid}`,
+          `http://192.168.0.232:8081/api/admin/products/delete/${editForm.pid}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           },

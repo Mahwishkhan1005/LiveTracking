@@ -27,7 +27,7 @@ export default function NavigationPage() {
   const webViewRef = useRef<WebView>(null);
   const ws = useRef<WebSocket | null>(null);
 
-  const API_BASE_URL = "http://192.168.0.219:8081";
+  const API_BASE_URL = "http://192.168.0.232:8081";
 
   const getAuthToken = async () => {
     try {
@@ -107,7 +107,7 @@ export default function NavigationPage() {
 
       // Start WebSocket for real-time updates to backend
       const token = await getAuthToken();
-      const socketUrl = `ws://192.168.0.219:8081/ws/location?token=${token}`;
+      const socketUrl = `ws://192.168.0.232:8081/ws/location?token=${token}`;
       ws.current = new WebSocket(socketUrl);
 
       // Start Watching Position

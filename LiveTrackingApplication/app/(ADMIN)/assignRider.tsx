@@ -20,7 +20,7 @@ import {
 const AssignRider = () => {
   const { orderId } = useLocalSearchParams();
   const router = useRouter();
-  const API_BASE_URL = "http://192.168.0.219:8081";
+  const API_BASE_URL = "http://192.168.0.232:8081";
 
   // --- STATES ---
   const [location, setLocation] = useState<Location.LocationObject | null>(

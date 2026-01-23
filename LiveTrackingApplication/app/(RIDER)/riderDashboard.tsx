@@ -36,7 +36,7 @@ const RiderDashboard = () => {
 
   const router = useRouter();
   const ws = useRef<WebSocket | null>(null); // WebSocket reference
-  const API_BASE_URL = "http://192.168.0.219:8081";
+  const API_BASE_URL = "http://192.168.0.232:8081";
 
   // --- 1. FETCH ASSIGNED ORDERS (GET) ---
   const fetchAssignedOrders = async (showLoadingIndicator = true) => {
@@ -89,7 +89,7 @@ const RiderDashboard = () => {
           : await SecureStore.getItemAsync("userToken");
 
       // C. Initialize WebSocket
-      const socketUrl = `ws://192.168.0.219:8081/ws/location?token=${token}`;
+      const socketUrl = `ws://192.168.0.220:8081/ws/location?token=${token}`;
       ws.current = new WebSocket(socketUrl);
 
       ws.current.onopen = () =>

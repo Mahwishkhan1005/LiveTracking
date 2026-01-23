@@ -53,7 +53,7 @@ const CartPage = () => {
 
       // 2. Place Order (Common Endpoint)
       const orderResponse = await axios.post(
-        "http://192.168.0.219:8081/api/user/orders",
+        "http://192.168.0.232:8081/api/user/orders",
         orderPayload,
         { headers: { Authorization: `Bearer ${token}` } },
       );
@@ -65,7 +65,7 @@ const CartPage = () => {
       if (paymentMethod === "ONLINE") {
         // --- PREPAID FLOW (Razorpay) ---
         const paymentResponse = await axios.post(
-          `http://192.168.0.219:8081/api/payments/create/${backendOrderId}`,
+          `http://192.168.0.220:8081/api/payments/create/${backendOrderId}`,
           { amount: cartTotal * 100 },
           { headers: { Authorization: `Bearer ${token}` } },
         );
@@ -93,7 +93,7 @@ const CartPage = () => {
           // 2. Call Verification API with your required payload
           // Mapping Razorpay's snake_case response to your backend's camelCase keys
           await axios.post(
-            "http://192.168.0.219:8081/api/payments/verify",
+            "http://192.168.0.220:8081/api/payments/verify",
             {
               razorpayOrderId: data.razorpay_order_id,
               razorpayPaymentId: data.razorpay_payment_id,
